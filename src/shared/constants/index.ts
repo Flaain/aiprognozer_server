@@ -1,0 +1,20 @@
+import * as dotenv from 'dotenv';
+import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import { BadRequestException, PipeTransform } from '@nestjs/common';
+import { isValidObjectId } from 'mongoose';
+
+dotenv.config();
+
+export const CORS: CorsOptions = {
+    origin: process.env.CLIENT_URL.split(' '),
+};
+
+export const paramPipe: PipeTransform = {
+    transform: (value: string) => {
+        if (!isValidObjectId(value)) throw new BadRequestException('Invalid object id');
+
+        return value;
+    },
+};
+
+export const defaultResponse = { message: 'OK' };
