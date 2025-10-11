@@ -18,3 +18,7 @@ export const paramPipe: PipeTransform = {
 };
 
 export const defaultResponse = { message: 'OK' };
+
+export const PROVIDERS = {
+    TG_BOT: 'TG_BOT',
+} as const;
