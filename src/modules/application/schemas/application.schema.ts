@@ -5,11 +5,11 @@ import { APPLICATION_STATUS } from '../constants';
 
 @Schema({ timestamps: true })
 export class Application implements IApplication {
-    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true })
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true })
     userId: mongoose.Types.ObjectId;
 
-    @Prop({ type: String, required: true })
-    one_win_name: string;
+    @Prop({ type: Number, required: true })
+    onewin_id: number;
 
     @Prop({ type: String, required: true, enum: Object.values(APPLICATION_STATUS), default: APPLICATION_STATUS.PENDING })
     status: ApplicationStatus;

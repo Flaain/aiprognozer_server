@@ -1,16 +1,24 @@
-import mongoose, { HydratedDocument, SchemaTimestampsConfig } from 'mongoose';
+import { HydratedDocument, SchemaTimestampsConfig, Types } from 'mongoose';
 import { APPLICATION_STATUS } from '../constants';
 import { Application } from '../schemas/application.schema';
 
-export type ApplicationStatus = typeof APPLICATION_STATUS[keyof typeof APPLICATION_STATUS];
+export type ApplicationStatus = (typeof APPLICATION_STATUS)[keyof typeof APPLICATION_STATUS];
 export type ApplicationDocument = HydratedDocument<Application> & SchemaTimestampsConfig;
 
 export interface IApplication {
-    userId: mongoose.Types.ObjectId;
-    one_win_name: string;
+    userId: Types.ObjectId;
+    onewin_id: number;
     status: 'pending' | 'approved';
 }
 
 export interface SendApplicationDTO {
-    one_win_name: string;
+    onewin_id: number;
+}
+
+export interface GetApplicationsReturn {
+    totalPages: number;
+    applications: Array<Pick<Application, 'onewin_id'> & { _id: Types.ObjectId }>;
+    currentPage: number;
+    hasPrevPage: boolean;
+    hasNextPage: boolean;
 }

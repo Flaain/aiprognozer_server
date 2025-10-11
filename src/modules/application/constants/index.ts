@@ -12,3 +12,4 @@ export const APPLICATION_STATUS = {
 
 export const MIN_1WIN_NAME_LENGTH = 3;
 export const MAX_1WIN_NAME_LENGTH = 64;
+export const APPLICATIONS_LIMIT_PER_PAGE = 10;
