@@ -10,6 +10,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { GlobalExceptionFilter } from './shared/filters/global.exception.filter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ApplicationModule } from './modules/application/application.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
     imports: [
@@ -19,10 +20,14 @@ import { ApplicationModule } from './modules/application/application.module';
             useFactory: (configService: ConfigService) => ({ uri: configService.getOrThrow<string>('DATABASE_URI') }),
             inject: [ConfigService],
         }),
-        TgModule,
+        TgModule.forRootAsync({
+            useFactory: (conifgSerivce: ConfigService) => ({ token: conifgSerivce.getOrThrow<string>('BOT_TOKEN') }),
+            inject: [ConfigService]
+        }),
         UserModule,
         AuthModule,
-        ApplicationModule
+        ApplicationModule,
+        DashboardModule
     ],
     controllers: [AppController],
     providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
