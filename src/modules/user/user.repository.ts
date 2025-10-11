@@ -10,7 +10,11 @@ export class UserRepository {
 
     findUserByTelegramId = (id: number) => this.model.findOne({ telegram_id: id }, { last_request_at: 0, telegram_id: 0 });
 
-    findOrCreateUserByTelegramId = (filter: RootFilterQuery<User>, update: UpdateQuery<User>, options?: QueryOptions<User>) => this.model.findOneAndUpdate(filter, update, options);
+    findOrCreateUserByTelegramId = (telegram_id: number) => this.model.findOneAndUpdate(
+        { telegram_id },
+        { $setOnInsert: { last_request_at: new Date(), request_count: 10 } },
+        { new: true, upsert: true, includeResultMetadata: true },
+    );
 
     createUser = (telegram_id: number) => this.model.create({ telegram_id });
 
@@ -20,4 +24,6 @@ export class UserRepository {
         { request_count: { $eq: 0 }, last_request_at: { $lt: new Date(+new Date() - ms('24h')) } },
         { $set: { request_count: 10 } }
     )
+
+    exists = (filter: RootFilterQuery<User>) => this.model.exists(filter)
 }

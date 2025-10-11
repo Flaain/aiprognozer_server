@@ -9,7 +9,7 @@ export interface IUser {
 }
 
 export interface WebAppUser {
-    id: string;
+    id: number;
     is_bot?: boolean;
     first_name: string;
     last_name?: string;
