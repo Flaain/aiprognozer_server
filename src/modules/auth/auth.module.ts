@@ -4,10 +4,9 @@ import { AuthService } from './auth.service';
 import { APP_GUARD } from '@nestjs/core';
 import { InitGuard } from './guards/auth.init.guard';
 import { UserModule } from '../user/user.module';
-import { TgModule } from '../tg/tg.module';
 
 @Module({
-    imports: [UserModule, TgModule],
+    imports: [UserModule],
     controllers: [AuthController],
     providers: [AuthService, { useClass: InitGuard, provide: APP_GUARD }],
 })
