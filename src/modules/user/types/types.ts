@@ -23,3 +23,4 @@ export interface WebAppUser {
 
 export type UserDocument = HydratedDocument<User>;
 export type UserRoles = typeof USER_ROLES[keyof typeof USER_ROLES];
+export type PostbackType = 'PROMO' | 'LINK'

@@ -1,7 +1,7 @@
+import mongoose from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { IUser, UserRoles } from '../types/types';
 import { USER_ROLES } from '../constants';
-import mongoose from 'mongoose';
 
 @Schema({ timestamps: true })
 export class User implements IUser {
@@ -20,8 +20,8 @@ export class User implements IUser {
     @Prop({ type: Boolean, required: true, default: false })
     isVerified: boolean;
 
-    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Applications' })
-    application?: mongoose.Types.ObjectId;
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Referalls' })
+    referall?: mongoose.Types.ObjectId;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
