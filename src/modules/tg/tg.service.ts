@@ -1,19 +1,22 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
+import { Bot, CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError, MemorySessionStorage } from 'grammy';
 import { bot_commands } from './constants';
 import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
 import { limit } from "@grammyjs/ratelimiter";
 import { PROVIDERS } from 'src/shared/constants';
+import { readFile } from 'node:fs';
+import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
 
 @Injectable()
 export class TgService {
     private readonly logger = new Logger(TgService.name);
     private readonly isProduction: boolean;
+    private readonly captchaStorage = new MemorySessionStorage<{ value: string; timerId: NodeJS.Timeout }>(300_000);
 
     constructor(
-        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot<ConversationFlavor<Context>>,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
     ) {
@@ -24,21 +27,29 @@ export class TgService {
 
     private onStart = async (ctx: CommandContext<Context>) => {
         if (!ctx.from) return;
-        
-        const { lastErrorObject }: any = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
 
-        ctx.reply(
-            `*Добро пожаловать*, ${ctx.from.first_name}\n\nЯ — ваш персональный ИИ-аналитик для ставок. Моя задача — помогать вам ориентироваться в мире спортивных событий:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски и вероятность исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nПопробуйте прямо сейчас — выберите матч, и я подготовлю для вас прогноз!`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', 'https://t.me/aiprognozer_bot/app'),
-            },
-        );
+        readFile('./link.txt', async (error, data) => {
+            if (error) {
+                this.logger.error(error);
+                // call sentry
+                return;
+            }
 
-        !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(ctx.from);
+            const { lastErrorObject }: any = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
+
+            ctx.reply(
+                `*Добро пожаловать, ${ctx.from.first_name}!*\n\nЯ — ваш персональный ИИ-аналитик для ставок на спорт. Моя задача — помогать вам ориентироваться в мире спортивных событий. Вот что я делаю:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски, рассчитываю вероятности исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nЧтобы разблокировать доступ к моим прогнозам, зарегистрируйтесь по реферальной ссылке ниже, это обязательно и займет всего минуту! \n\n${data.toString()}\n\nГотовы? Выберите матч, и я подготовлю для вас прогноз!`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', 'https://t.me/aiprognozer_bot/app'),
+                },
+            );
+
+            !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(ctx.from);
+        });
     };
 
-    public notifyAboutNewUser = (user: WebAppUser) => {
+    private notifyAboutNewUser = (user: WebAppUser) => {
         this.tgBot.api.sendMessage(
             this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
             `🚀 Новый пользователь!\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
@@ -54,22 +65,79 @@ export class TgService {
         } else if (error instanceof HttpError) {
             this.logger.error(`Could not contact Telegram: ${error}`);
         } else {
-            this.logger.error(`Unknown error: ${error}`);
+            this.logger.error(`Unknown error: ${error}`, error.stack);
         }
     };
 
+    private getLink = (ctx: CommandContext<ConversationFlavor<Context>>) => {
+        readFile('./link.txt', (error, data) => {
+            if (error) {
+                ctx.reply('Произошла ошибка при получении актульной ссылки. Пожалуйста, попробуйте ещё раз.');
+                this.logger.error(error);
+                return;
+            };
+
+            ctx.reply(`Актуальная ссылка для регистрации - ${data.toString()}`);
+        });
+    };
+
+    private captcha = async (convo: Conversation, ctx: ConversationFlavor<Context>) => {
+        console.log('captcha');
+        const data = this.captchaStorage.read(ctx.from.id.toString());
+
+        ctx.reply(`🔑 @${ctx.from.username}, введите отображенную капчу в течении 5 минут: ${data.value}`);
+
+        let isCorrect = false;
+
+        do {
+            const { message } = await convo.waitFrom(ctx.from.id).andFor('message:text', {
+                otherwise: (ctx) => {
+                    ctx.message && ctx.api.deleteMessage(ctx.chatId, ctx.message.message_id);
+                }
+            });
+
+            if (message.text === data.value) {
+                isCorrect = true;
+                clearTimeout(data.timerId);
+
+                ctx.reply('👍 Капча верна!', { reply_parameters: { message_id: message.message_id } });
+            } else {
+                ctx.api.deleteMessage(ctx.chatId, message.message_id);
+            }
+        } while (!isCorrect);
+
+        return;
+    }
+
     private init = () => {
         try {
-            this.tgBot.start();
-
-            this.logger.log('🚀 tg bot is running');
-            
             this.tgBot.catch(this.handleCatch.bind(this));
+
             this.tgBot.api.setMyCommands(bot_commands);
             
             this.tgBot.use(limit({ limit: 1, timeFrame: 500 }));
+            this.tgBot.use(conversations());
+            this.tgBot.use(createConversation(this.captcha.bind(this), { id: 'captcha', parallel: true }));
 
+            this.tgBot.command('link', this.getLink.bind(this));
             this.tgBot.command('start', this.onStart.bind(this));
+            
+            this.tgBot.on(':new_chat_members', async (ctx) => {
+                this.captchaStorage.write(ctx.from.id.toString(), {
+                    value: Math.random().toString(36).substring(2, 15),
+                    timerId: setTimeout(async () => {
+                        this.captchaStorage.delete(ctx.from.id.toString());
+
+                        ctx.banChatMember(ctx.from.id, { until_date: Date.now() + 60_000 });
+                    }, 300_000),
+                });
+
+                await ctx.conversation.enter('captcha');
+            });
+
+            this.tgBot.start();
+            
+            this.logger.log('🚀 bot is running');
         } catch (error) {
             this.logger.error(error);
         }
