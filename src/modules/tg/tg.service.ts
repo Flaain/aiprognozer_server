@@ -1,19 +1,18 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError, MemorySessionStorage } from 'grammy';
+import { Bot, CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
 import { bot_commands } from './constants';
 import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
 import { limit } from "@grammyjs/ratelimiter";
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs';
-import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
+import { ConversationFlavor, conversations } from '@grammyjs/conversations';
 
 @Injectable()
 export class TgService {
     private readonly logger = new Logger(TgService.name);
     private readonly isProduction: boolean;
-    private readonly captchaStorage = new MemorySessionStorage<{ value: string; timerId: NodeJS.Timeout }>(300_000);
 
     constructor(
         @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot<ConversationFlavor<Context>>,
@@ -81,34 +80,6 @@ export class TgService {
         });
     };
 
-    private captcha = async (convo: Conversation, ctx: ConversationFlavor<Context>) => {
-        console.log('captcha');
-        const data = this.captchaStorage.read(ctx.from.id.toString());
-
-        ctx.reply(`🔑 @${ctx.from.username}, введите отображенную капчу в течении 5 минут: ${data.value}`);
-
-        let isCorrect = false;
-
-        do {
-            const { message } = await convo.waitFrom(ctx.from.id).andFor('message:text', {
-                otherwise: (ctx) => {
-                    ctx.message && ctx.api.deleteMessage(ctx.chatId, ctx.message.message_id);
-                }
-            });
-
-            if (message.text === data.value) {
-                isCorrect = true;
-                clearTimeout(data.timerId);
-
-                ctx.reply('👍 Капча верна!', { reply_parameters: { message_id: message.message_id } });
-            } else {
-                ctx.api.deleteMessage(ctx.chatId, message.message_id);
-            }
-        } while (!isCorrect);
-
-        return;
-    }
-
     private init = () => {
         try {
             this.tgBot.catch(this.handleCatch.bind(this));
@@ -117,23 +88,9 @@ export class TgService {
             
             this.tgBot.use(limit({ limit: 1, timeFrame: 500 }));
             this.tgBot.use(conversations());
-            this.tgBot.use(createConversation(this.captcha.bind(this), { id: 'captcha', parallel: true }));
 
             this.tgBot.command('link', this.getLink.bind(this));
             this.tgBot.command('start', this.onStart.bind(this));
-            
-            this.tgBot.on(':new_chat_members', async (ctx) => {
-                this.captchaStorage.write(ctx.from.id.toString(), {
-                    value: Math.random().toString(36).substring(2, 15),
-                    timerId: setTimeout(async () => {
-                        this.captchaStorage.delete(ctx.from.id.toString());
-
-                        ctx.banChatMember(ctx.from.id, { until_date: Date.now() + 60_000 });
-                    }, 300_000),
-                });
-
-                await ctx.conversation.enter('captcha');
-            });
 
             this.tgBot.start();
             
