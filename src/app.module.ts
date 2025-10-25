@@ -9,7 +9,6 @@ import { RequestMiddleware } from './shared/middlewares/request.middleware';
 import { APP_FILTER } from '@nestjs/core';
 import { GlobalExceptionFilter } from './shared/filters/global.exception.filter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ApplicationModule } from './modules/application/application.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
@@ -26,7 +25,6 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         }),
         UserModule,
         AuthModule,
-        ApplicationModule,
         DashboardModule
     ],
     controllers: [AppController],
