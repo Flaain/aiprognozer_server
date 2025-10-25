@@ -2,76 +2,110 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CallbackQueryContext, CommandContext, Context, InlineKeyboard, NextFunction } from 'grammy';
 import { UserRepository } from '../user/user.repository';
 import { USER_ROLES } from '../user/constants';
-import { ApplicationService } from '../application/application.service';
+import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
+import { writeFile } from 'node:fs';
 
 @Injectable()
 export class DashboardService {
     private readonly logger = new Logger(DashboardService.name);
+    private readonly welcomeReplyMarkup = new InlineKeyboard().text('Заменить ссылку', 'dashboard/link').row().text('Скрыть панель', 'dashboard/hide');
 
-    constructor(
-        private readonly userRepository: UserRepository,
-        private readonly apllicationService: ApplicationService,
-    ) {}
+    constructor(private readonly userRepository: UserRepository) {}
 
     public async onDashboard(ctx: CommandContext<Context>) {
         ctx.reply(`*Добро пожаловать в админ-панель*`, {
             parse_mode: 'Markdown',
-            reply_markup: new InlineKeyboard().text('Заявки', 'dashboard/applications').row().text('Скрыть панель', 'dashboard/hide'),
+            reply_markup: this.welcomeReplyMarkup,
         });
+    }
+
+    public buildWelcomeScreen = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
+        await ctx.conversation.exit('dashboard/link');
+
+        ctx.api.editMessageText(ctx.chatId, ctx.callbackQuery.message.message_id, `*Добро пожаловать в админ-панель*`, {
+            parse_mode: 'Markdown',
+            reply_markup: this.welcomeReplyMarkup,
+        });
+
+        ctx.answerCallbackQuery();
     };
 
-    public buildWelcomeScreen = (ctx: CallbackQueryContext<Context>) => {
+    public onDashboardLink = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
+        await ctx.conversation.exit('dashboard/link');
+        await ctx.conversation.enter('dashboard/link');
+
+        ctx.answerCallbackQuery();
+    };
+
+    public onDashboardLinkConversation = async (
+        conversation: Conversation,
+        ctx: CallbackQueryContext<ConversationFlavor<Context>>,
+    ) => {
+        const internal_ctx: { link: string | null; isCorrect: boolean; isSuccess: boolean } = {
+            link: null,
+            isCorrect: false,
+            isSuccess: false,
+        };
+
         ctx.api.editMessageText(
-            ctx.callbackQuery.message.chat.id, 
-            ctx.callbackQuery.message.message_id, 
-            `*Добро пожаловать в админ-панель*`,
+            ctx.chatId,
+            ctx.callbackQuery.message.message_id,
+            '*Отправьте новую ссылку*\n\nподдерживаются следующие форматы: \n\nhttps://1qwerty.com/\nhttps://1qwerty.com/?p=aiprognoz',
             {
                 parse_mode: 'Markdown',
-                reply_markup: new InlineKeyboard().text('Заявки', 'dashboard/applications').row().text('Скрыть панель', 'dashboard/hide'),
-            }
+                reply_markup: new InlineKeyboard().text('Назад', 'dashboard'),
+            },
         );
 
-        ctx.answerCallbackQuery();
-    }
+        do {
+            const { message } = await conversation.waitFor('message:text', { next: true });
+
+            if (/^https?:\/\/1[^\s\/?#]+(?:\/[^\s?#]*)?(?:\?p=aiprognoz)?$/.test(message.text)) {
+                internal_ctx.link = message.text;
+                internal_ctx.isCorrect = true;
+            } else {
+                ctx.reply('❌️ Некорректная ссылка, попробуйте еще раз ❌️');
+            }
+        } while (!internal_ctx.isCorrect);
+
+        for (let i = 0; i < 3; i += 1) {
+            try {
+                await new Promise((res, rej) => {
+                    writeFile('./link.txt', internal_ctx.link, (error) => {
+                        error ? rej(error) : res(true);
+                    });
+                });
+
+                internal_ctx.isSuccess = true;
+
+                break;
+            } catch (error) {
+                this.logger.error(`Error writing link to file: ${error}`);
+            }
+        }
+
+        ctx.reply(internal_ctx.isSuccess ? '✅️ Ссылка успешно обновлена ✅️' : '❌️ Произошла ошибка при обновлении ссылки ❌️');
+
+        return;
+    };
 
     public async onDashboardHide(ctx: CallbackQueryContext<Context>) {
-        ctx.api.deleteMessage(ctx.callbackQuery.message.chat.id, ctx.callbackQuery.message.message_id);
+        await ctx.api.deleteMessage(ctx.chatId, ctx.callbackQuery.message.message_id);
+
         ctx.answerCallbackQuery('Панель скрыта');
-    };
+    }
 
     public hasAccess = async (ctx: CommandContext<Context> | CallbackQueryContext<Context>, next: NextFunction) => {
-        if (!await this.userRepository.exists({ telegram_id: ctx.from.id, isVerified: true, role: USER_ROLES.ADMIN })) return; // silently ignore
+        if (
+            ctx.chat.type !== 'private' ||
+            !(await this.userRepository.userExists({
+                telegram_id: ctx.from.id,
+                isVerified: true,
+                role: USER_ROLES.ADMIN,
+            }))
+        )
+            return;
 
         await next();
-    }
-
-    public async onDashboardApplications(ctx: CallbackQueryContext<Context>) {
-        const keyboard = await this.buildPaginatedMenu(Number(ctx.callbackQuery.data.split('/')[1].split('=')[1] ?? 1));
-        
-        ctx.api.editMessageText(
-            ctx.callbackQuery.message.chat.id, ctx.callbackQuery.message.message_id, 
-            `${keyboard ? '*Заявки*' : 'Пока нет ни одной заявки'}`, 
-            { parse_mode: 'Markdown', reply_markup: keyboard ?? new InlineKeyboard().text('Вернуться назад', 'dashboard') }
-        );
-
-        ctx.answerCallbackQuery();
     };
-
-    private buildPaginatedMenu = async (page: number): Promise<InlineKeyboard | null> => {
-        if (isNaN(page) || typeof page !== 'number') return null;
-
-        const { applications, currentPage, hasNextPage, hasPrevPage, totalPages } = await this.apllicationService.getApplications({ page });
-
-        if (!applications.length) return null;
-
-        const keyboard = InlineKeyboard.from([...applications.map(({ _id, onewin_id }) => [InlineKeyboard.text(`Заявка: ${onewin_id}`, `dashboard/application/${_id}?from=${page}`)])]);
-
-        if (hasNextPage) keyboard.row().text('Следующая страница', `dashboard/applications?page=${currentPage + 1}`);
-        if (hasPrevPage) keyboard.row().text('Предыдущая страница', `dashboard/applications?page=${currentPage - 1}`);
-
-        keyboard.row().text('Вернуться назад', 'dashboard');
-        keyboard.row().text(`Страница ${currentPage} из ${totalPages}`);
-        
-        return keyboard;
-    }
 }
