@@ -45,12 +45,11 @@ export class AuthService {
     };
 
     public login = async (init_data: InitDataInRequest) => {
-        const {
-            value: { telegram_id, last_request_at, __v, ...user },
-            lastErrorObject,
-        }: any = await this.userRepository.findOrCreateUserByTelegramId(init_data.user.id);
-
+        const { value, lastErrorObject }: any = await this.userRepository.findOrCreateUserByTelegramId(init_data.user.id);
+        
         !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(init_data.user);
+        
+        const { telegram_id, __v, ...user } = value.toObject();
 
         return user;
     };

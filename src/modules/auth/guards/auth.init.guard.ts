@@ -19,7 +19,7 @@ export class InitGuard implements CanActivate {
         const request = context.switchToHttp().getRequest();
 
         const { 0: type, 1: data } = (request.headers['authorization'] || '').split(' ');
-        
+
         if (!type || !data || type !== 'tma') throw new UnauthorizedException();
 
         const parsedInitData = this.authService.parseInitData(data);
