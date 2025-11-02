@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { UserRepository } from './user.repository';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PostbackType, UserDocument } from './types/types';
@@ -7,6 +7,7 @@ import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
 import { Bot } from 'grammy';
 import { ConfigService } from '@nestjs/config';
+import { AppException } from 'src/shared/exceptions/app.exception';
 
 @Injectable()
 export class UserService {
@@ -31,7 +32,7 @@ export class UserService {
     }
 
     public verify = async (user: UserDocument, onewin_id: number) => {
-        if (user.isVerified) throw new BadRequestException('User already verified');
+        if (user.isVerified) throw new AppException({ message: 'User already verified', errorCode: 'ALREADY_VERIFIED' }, HttpStatus.BAD_REQUEST);
 
         const session = await this.connection.startSession();
 
@@ -40,9 +41,8 @@ export class UserService {
         try {
             const referall = await this.userRepository.findReferall(onewin_id, session);
 
-            if (!referall) throw new BadRequestException('REFERALL_NOT_EXISTS');
-
-            if (referall.user_id) throw new ConflictException('REFERALL_ALREADY_TAKEN');
+            if (!referall) throw new AppException({ message: 'Referall not found', errorCode: 'REFERALL_NOT_EXISTS' }, HttpStatus.NOT_FOUND);
+            if (referall.user_id) throw new AppException({ message: 'Referall already verified', errorCode: 'REFERALL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
 
             await user.updateOne({ isVerified: true, referall: referall._id }, { session });
             await referall.updateOne({ user_id: user._id }, { session });

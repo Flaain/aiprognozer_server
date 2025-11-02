@@ -1,5 +1,7 @@
 import { BadRequestException, PipeTransform } from "@nestjs/common";
 
+export const DEFAULT_REQUEST_LIMIT = 10;
+
 export const USER_ROLES = {
     USER: 'USER',
     ADMIN: 'ADMIN',

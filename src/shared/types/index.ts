@@ -1,6 +1,8 @@
 import { UserDocument, WebAppUser } from 'src/modules/user/types/types';
 
-export type InitDataInRequest = Pick<WebAppInitData, 'user' | 'hash' | 'auth_date' | 'query_id'> & { data_check_string: string };
+export type InitDataInRequest = Pick<WebAppInitData, 'user' | 'hash' | 'auth_date' | 'query_id'> & {
+    data_check_string: string;
+};
 
 export interface WebAppChat {
     id: number;

@@ -80,11 +80,11 @@ export class TgService {
         });
     };
 
-    private init = () => {
+    private init = async () => {
         try {
             this.tgBot.catch(this.handleCatch.bind(this));
 
-            this.tgBot.api.setMyCommands(bot_commands);
+            await this.tgBot.api.setMyCommands(bot_commands);
             
             this.tgBot.use(limit({ limit: 1, timeFrame: 500 }));
             this.tgBot.use(conversations());
