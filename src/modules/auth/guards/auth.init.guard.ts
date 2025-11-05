@@ -22,9 +22,7 @@ export class InitGuard implements CanActivate {
 
         if (!type || !data || type !== 'tma') throw new UnauthorizedException();
 
-        const parsedInitData = this.authService.parseInitData(data);
-
-        request.init_data = parsedInitData;
+        request.init_data = this.authService.parseInitData(data);
 
         this.reflector.get<boolean>(AUTH_KEY, handler) && (request.user = await this.authService.validate(request.init_data.user.id));
 

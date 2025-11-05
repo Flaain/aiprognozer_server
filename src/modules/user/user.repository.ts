@@ -13,7 +13,7 @@ export class UserRepository {
         @InjectModel(Referalls.name) private readonly referallsModel: Model<Referalls>,
     ) {}
 
-    findUserByTelegramId = (id: number) => this.userModel.findOne({ telegram_id: id }, { last_request_at: 0, telegram_id: 0 });
+    findUserByTelegramId = (id: number) => this.userModel.findOne({ telegram_id: id });
 
     findOrCreateUserByTelegramId = (telegram_id: number) => this.userModel.findOneAndUpdate<UserDocument>(
         { telegram_id },
@@ -27,20 +27,23 @@ export class UserRepository {
 
     findOneAndUpdateUser = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.userModel.findOneAndUpdate(filter, update, options);
 
-    resetRequestCount = () => this.userModel.updateMany(
-        { 
-            last_reset_at: { $lt: new Date(+new Date() - ms('24h')) },
-            $expr: { $ne: ['$request_count', 0] } 
-        }, 
-        [
+    resetRequestCount = () => {
+        const now = new Date();
+
+        return this.userModel.updateMany(
             {
-                $set: {
-                    request_count: 0,
-                    last_reset_at: new Date(),
+                $expr: {
+                    $and: [
+                        { $ne: ['$request_count', 0] },
+                        { $lt: ['$last_request_at', new Date(+now - ms('24h'))] } , 
+                    ],
                 },
             },
-        ]
-    );
+            [
+                { $set: { request_count: 0 } },
+            ],
+        );
+    }
 
     userExists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 

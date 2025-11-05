@@ -10,6 +10,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { GlobalExceptionFilter } from './shared/filters/global.exception.filter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { AnalysisModule } from './modules/analysis/analysis.module';
 
 @Module({
     imports: [
@@ -25,7 +26,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         }),
         UserModule,
         AuthModule,
-        DashboardModule
+        DashboardModule,
+        AnalysisModule
     ],
     controllers: [AppController],
     providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],

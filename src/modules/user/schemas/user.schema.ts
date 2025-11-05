@@ -11,9 +11,6 @@ export class User implements IUser {
 
     @Prop({ type: Date, required: true, default: () => new Date() })
     last_request_at: Date;
-    
-    @Prop({ type: Date, required: true, default: () => new Date() })
-    last_reset_at: Date;
 
     @Prop({ type: Number, required: true, default: 0 })
     request_count: number;

@@ -3,7 +3,7 @@ import { CallbackQueryContext, CommandContext, Context, InlineKeyboard, NextFunc
 import { UserRepository } from '../user/user.repository';
 import { USER_ROLES } from '../user/constants';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
-import { writeFile } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 
 @Injectable()
 export class DashboardService {
@@ -70,11 +70,7 @@ export class DashboardService {
 
         for (let i = 0; i < 3; i += 1) {
             try {
-                await new Promise((res, rej) => {
-                    writeFile('./link.txt', internal_ctx.link, (error) => {
-                        error ? rej(error) : res(true);
-                    });
-                });
+                await writeFile('./link.txt', internal_ctx.link);
 
                 internal_ctx.isSuccess = true;
 
