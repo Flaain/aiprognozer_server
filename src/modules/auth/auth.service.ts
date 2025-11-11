@@ -6,6 +6,7 @@ import { UserRepository } from '../user/user.repository';
 import { InitDataInRequest } from 'src/shared/types';
 import { PROVIDERS } from 'src/shared/constants';
 import { Bot } from 'grammy';
+import { ms } from 'src/shared/utils/ms';
 
 @Injectable()
 export class AuthService {
@@ -47,7 +48,16 @@ export class AuthService {
     public login = async (init_data: InitDataInRequest) => {
         const { value, lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(init_data.user.id);
         
-        !lastErrorObject.updatedExisting && this.notifyAboutNewUser(init_data.user);
+        if (!lastErrorObject.updatedExisting) {
+            this.notifyAboutNewUser(init_data.user);
+        } else {
+            if (value.first_request_at && Date.now() > +new Date(value.first_request_at) + ms('24h')) {
+                value.request_count = 0;
+                value.first_request_at = undefined;
+                
+                await value.save();
+            }
+        }
         
         const { telegram_id, __v, ...user } = value.toObject();
 
@@ -65,7 +75,7 @@ export class AuthService {
     private notifyAboutNewUser = (user: WebAppUser) => {
         this.tgBot.api.sendMessage(
             this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-            `🚀 Новый пользователь!\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
+            `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
             { parse_mode: 'Markdown', disable_notification: !this.isProduction },
         );
     };

@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { RequestWithInitDataAndUser } from 'src/shared/types';
 import { AppException } from 'src/shared/exceptions/app.exception';
+import { ms } from 'src/shared/utils/ms';
 
 @Injectable()
 export class LimitGuard implements CanActivate {
@@ -9,11 +10,18 @@ export class LimitGuard implements CanActivate {
 
         if (user.isUnlimited) return true;
 
-        if (user.request_limit <= user.request_count) {
-            throw new AppException(
-                { errorCode: 'REQUEST_LIMIT_EXCEEDED', message: 'Request limit exceeded' },
-                HttpStatus.BAD_REQUEST,
-            );
+        if (user.first_request_at && +new Date(user.first_request_at) + ms('24h') > Date.now()) {
+            if (user.request_count >= user.request_limit) {
+                throw new AppException(
+                    { message: 'Limit exceeded', errorCode: 'REQUEST_LIMIT_EXCEEDED' },
+                    HttpStatus.TOO_MANY_REQUESTS,
+                );
+            } else {
+                user.request_count += 1;
+            }
+        } else {
+            user.request_count = 1;
+            user.first_request_at = new Date();
         }
 
         return true;
