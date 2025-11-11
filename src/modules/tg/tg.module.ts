@@ -4,6 +4,7 @@ import { Bot } from 'grammy';
 import { TgModuleAsyncOptions } from './types';
 import { PROVIDERS } from 'src/shared/constants';
 import { UserModule } from '../user/user.module';
+import { DashboardModule } from '../dashboard/dashboard.module';
 
 @Module({})
 export class TgModule {
@@ -23,7 +24,7 @@ export class TgModule {
         return {
             global: true,
             module: TgModule,
-            imports: [UserModule],
+            imports: [UserModule, DashboardModule],
             providers: [provider, TgService],
             exports: [provider],
         };

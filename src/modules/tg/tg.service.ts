@@ -6,8 +6,9 @@ import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
 import { limit } from "@grammyjs/ratelimiter";
 import { PROVIDERS } from 'src/shared/constants';
-import { readFile } from 'node:fs';
-import { ConversationFlavor, conversations } from '@grammyjs/conversations';
+import { readFile } from 'node:fs/promises';
+import { ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 @Injectable()
 export class TgService {
@@ -18,6 +19,7 @@ export class TgService {
         @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot<ConversationFlavor<Context>>,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
+        private readonly dashboardService: DashboardService
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
 
@@ -27,31 +29,24 @@ export class TgService {
     private onStart = async (ctx: CommandContext<Context>) => {
         if (!ctx.from) return;
 
-        readFile('./link.txt', async (error, data) => {
-            if (error) {
-                this.logger.error(error);
-                // call sentry
-                return;
-            }
+        const link = await readFile('./link.txt', 'utf-8');
+        const { lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
 
-            const { lastErrorObject }: any = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
+        ctx.reply(
+            `*Добро пожаловать, ${ctx.from.first_name}!*\n\nЯ — ваш персональный ИИ-аналитик для ставок на спорт. Моя задача — помогать вам ориентироваться в мире спортивных событий. Вот что я делаю:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски, рассчитываю вероятности исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nЧтобы разблокировать доступ к моим прогнозам, зарегистрируйтесь по реферальной ссылке ниже, это обязательно и займет всего минуту! \n\n${link.toString()}\n\nГотовы? Выберите матч, и я подготовлю для вас прогноз!`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', 'https://t.me/aiprognozer_bot/app'),
+            },
+        );
 
-            ctx.reply(
-                `*Добро пожаловать, ${ctx.from.first_name}!*\n\nЯ — ваш персональный ИИ-аналитик для ставок на спорт. Моя задача — помогать вам ориентироваться в мире спортивных событий. Вот что я делаю:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски, рассчитываю вероятности исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nЧтобы разблокировать доступ к моим прогнозам, зарегистрируйтесь по реферальной ссылке ниже, это обязательно и займет всего минуту! \n\n${data.toString()}\n\nГотовы? Выберите матч, и я подготовлю для вас прогноз!`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', 'https://t.me/aiprognozer_bot/app'),
-                },
-            );
-
-            !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(ctx.from);
-        });
+        !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(ctx.from);
     };
 
     private notifyAboutNewUser = (user: WebAppUser) => {
         this.tgBot.api.sendMessage(
             this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-            `🚀 Новый пользователь!\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
+            `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
             { parse_mode: 'Markdown', disable_notification: !this.isProduction },
         );
     };
@@ -68,16 +63,10 @@ export class TgService {
         }
     };
 
-    private getLink = (ctx: CommandContext<ConversationFlavor<Context>>) => {
-        readFile('./link.txt', (error, data) => {
-            if (error) {
-                ctx.reply('Произошла ошибка при получении актульной ссылки. Пожалуйста, попробуйте ещё раз.');
-                this.logger.error(error);
-                return;
-            };
+    private getLink = async (ctx: CommandContext<ConversationFlavor<Context>>) => {
+        const link = await readFile('./link.txt', 'utf-8');
 
-            ctx.reply(`Актуальная ссылка для регистрации - ${data.toString()}`);
-        });
+        ctx.reply(`Актуальная ссылка для регистрации - ${link.toString()}`);
     };
 
     private init = async () => {
@@ -87,8 +76,10 @@ export class TgService {
             await this.tgBot.api.setMyCommands(bot_commands);
             
             this.tgBot.use(limit({ limit: 1, timeFrame: 500 }));
+            
             this.tgBot.use(conversations());
-
+            this.tgBot.use(createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), 'dashboard/link'));
+            
             this.tgBot.command('link', this.getLink.bind(this));
             this.tgBot.command('start', this.onStart.bind(this));
 
