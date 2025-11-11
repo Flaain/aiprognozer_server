@@ -4,7 +4,7 @@ import { USER_ROLES } from '../constants';
 
 export interface IUser {
     telegram_id: number;
-    last_request_at: Date;
+    first_request_at?: Date;
     request_count: number;
     request_limit: number;
     isBanned: boolean;

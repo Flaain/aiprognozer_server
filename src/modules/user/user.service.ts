@@ -1,6 +1,5 @@
 import { ConflictException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { UserRepository } from './user.repository';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PostbackType, UserDocument } from './types/types';
 import { Connection } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
@@ -19,17 +18,6 @@ export class UserService {
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
     ) {}
-
-    @Cron(CronExpression.EVERY_5_MINUTES)
-    private async resetRequestCount() {
-        try {
-            const { matchedCount } = await this.userRepository.resetRequestCount();
-
-            this.logger.log(`Cron job resetRequestCount success, updated users: ${matchedCount}`);
-        } catch (error) {
-            this.logger.error(`Cron job resetRequestCount error: ${error}`);
-        }
-    }
 
     public verify = async (user: UserDocument, onewin_id: number) => {
         if (user.isVerified) throw new AppException({ message: 'User already verified', errorCode: 'ALREADY_VERIFIED' }, HttpStatus.BAD_REQUEST);

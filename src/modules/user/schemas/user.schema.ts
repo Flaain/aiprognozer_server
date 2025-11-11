@@ -9,8 +9,8 @@ export class User implements IUser {
     @Prop({ type: Number, required: true, unique: true, index: true })
     telegram_id: number;
 
-    @Prop({ type: Date, required: true, default: () => new Date() })
-    last_request_at: Date;
+    @Prop({ type: Date })
+    first_request_at?: Date;
 
     @Prop({ type: Number, required: true, default: 0 })
     request_count: number;

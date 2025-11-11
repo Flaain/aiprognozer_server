@@ -17,7 +17,7 @@ export class UserRepository {
 
     findOrCreateUserByTelegramId = (telegram_id: number) => this.userModel.findOneAndUpdate<UserDocument>(
         { telegram_id },
-        { $setOnInsert: { last_request_at: new Date(), request_count: 10 } },
+        { $setOnInsert: { request_count: 0 } },
         { new: true, upsert: true, includeResultMetadata: true },
     );
 
@@ -28,19 +28,19 @@ export class UserRepository {
     findOneAndUpdateUser = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.userModel.findOneAndUpdate(filter, update, options);
 
     resetRequestCount = () => {
-        const now = new Date();
-
         return this.userModel.updateMany(
             {
                 $expr: {
                     $and: [
                         { $ne: ['$request_count', 0] },
-                        { $lt: ['$last_request_at', new Date(+now - ms('24h'))] } , 
+                        { $ifNull: ['$first_request_at', false] },
+                        { $lt: [{ $add: ['$first_request_at', ms('24h')] }, new Date()] }, 
                     ],
                 },
             },
             [
                 { $set: { request_count: 0 } },
+                { $unset: 'first_request_at' }
             ],
         );
     }
