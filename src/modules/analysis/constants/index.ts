@@ -25,6 +25,10 @@ export const filePipe = new ParseFilePipe({
 
 export const sportTypePipe: PipeTransform<SportType> = {
     transform: (value) => {
+        if (typeof value !== 'string' || !value.trim().length) {    
+            throw new BadRequestException('Sport type is required');
+        };
+
         if (!ALLOWED_SPORT_TYPES.includes(value)) {
             throw new BadRequestException(`Unknown sport type. Allowed: ${ALLOWED_SPORT_TYPES.join(', ')}`);
         }

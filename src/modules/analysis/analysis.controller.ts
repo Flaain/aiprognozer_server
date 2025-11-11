@@ -20,6 +20,6 @@ export class AnalysisController {
         @UploadedFile(filePipe) file: Express.Multer.File,
         @Query('type', sportTypePipe) type: SportType,
     ) {
-        return this.analysisService.analysis(user, type, file);
+        return this.analysisService.analysis(user, type, null);
     }
 }
