@@ -12,6 +12,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AnalysisModule } from './modules/analysis/analysis.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { PaymentModule } from './modules/payment/payment.module';
+import { ProductModule } from './modules/product/product.module';
+import { StoreModule } from './modules/store/store.module';
 
 @Module({
     imports: [
@@ -30,6 +33,9 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
         AuthModule,
         DashboardModule,
         AnalysisModule,
+        PaymentModule,
+        ProductModule,
+        StoreModule
     ],
     controllers: [AppController],
     providers: [
