@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema';
 import { ClientSession, Model, QueryOptions, RootFilterQuery, UpdateQuery } from 'mongoose';
-import { ms } from 'src/shared/utils/ms';
 import { Referalls } from './schemas/referall.schema';
 import { UserDocument } from './types/types';
 
@@ -26,24 +25,6 @@ export class UserRepository {
     createReferall = (onewin_id: number) => this.referallsModel.create({ onewin_id });
 
     findOneAndUpdateUser = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.userModel.findOneAndUpdate(filter, update, options);
-
-    resetRequestCount = () => {
-        return this.userModel.updateMany(
-            {
-                $expr: {
-                    $and: [
-                        { $ne: ['$request_count', 0] },
-                        { $ifNull: ['$first_request_at', false] },
-                        { $lt: [{ $add: ['$first_request_at', ms('24h')] }, new Date()] }, 
-                    ],
-                },
-            },
-            [
-                { $set: { request_count: 0 } },
-                { $unset: 'first_request_at' }
-            ],
-        );
-    }
 
     userExists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 
