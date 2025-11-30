@@ -18,6 +18,9 @@ export class ProductRepository {
         options?: QueryOptions<Product> & Abortable,
     ) => this.productModel.findOne<ProductDocument>(filter, projection, options);
 
+    public findById = (id: Types.ObjectId | string, projection?: ProjectionType<Product>, options?: QueryOptions<Product>) =>
+        this.productModel.findById(id, projection, options);
+
     public aggregate = (pipeline?: Array<PipelineStage>, options?: AggregateOptions) =>
         this.productModel.aggregate<Product>(pipeline, options);
 
@@ -69,9 +72,9 @@ export class ProductRepository {
                             default: false,
                         },
                     },
-                    lastBuyAt: {
+                    payedAt: {
                         $cond: {
-                            if: { $and: [{ $ne: ['$payment', null] }, { $eq: ['$type', PRODUCT_TYPE.DAILY] }] },
+                            if: { $ne: ['$payment', null] },
                             then: '$payment.payedAt',
                             else: '$$REMOVE',
                         },
