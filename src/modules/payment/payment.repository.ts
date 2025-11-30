@@ -1,17 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
 import { Payment } from './schema/payment.schema';
 import { PRODUCT_TYPE } from '../product/constants';
 import { PAYMENT_STATUS } from './constants';
 import { Product } from '../product/schema/product.schema';
+import { PaymentDocument } from './types';
 
 @Injectable()
 export class PaymentRepository {
     constructor(@InjectModel(Payment.name) private readonly paymentModel: Model<Payment>) {}
 
     public getCurrentLadder = (userId: Types.ObjectId) =>
-        this.paymentModel.aggregate<Product & { nextProduct?: Product; isLastProductWasPurchased?: boolean }>([
+        this.paymentModel.aggregate<Product & { canBuy?: boolean }>([
             { $match: { userId } },
             {
                 $lookup: {
@@ -37,21 +38,23 @@ export class PaymentRepository {
             {
                 $project: {
                     product: {
-                        $mergeObjects: [
-                            '$product',
-                            {
-                                nextProduct: '$nextProduct',
-                                isLastProductWasPurchased: {
-                                    $cond: {
-                                        if: { $eq: ['$product.next', null] },
-                                        then: true,
-                                        else: '$$REMOVE',
-                                    },
-                                },
-                            },
-                        ],
+                        $cond: {
+                            if: { $eq: ['$product.next', null] },
+                            then: '$product',
+                            else: { $mergeObjects: ['$nextProduct', { canBuy: true }] },
+                        },
                     },
                 },
             },
         ]);
+
+        public isAlreadyPayed = (userId: Types.ObjectId, productId: Types.ObjectId) => this.paymentModel.exists({ userId, productId, status: PAYMENT_STATUS.PAID });
+
+        public findOneAndUpdate = (filter?: RootFilterQuery<Payment>, update?: UpdateQuery<Payment>, options?: QueryOptions<Payment>) => this.paymentModel.findOneAndUpdate(filter, update, options);
+
+        public findOne = async (filter?: RootFilterQuery<Payment>, projection?: ProjectionType<Payment>, options?: QueryOptions<Payment>) => this.paymentModel.findOne<PaymentDocument>(filter, projection, options);
+
+        public create = (payment: Payment) => this.paymentModel.create(payment);
+
+        public exists = (filter: RootFilterQuery<Payment>) => this.paymentModel.exists(filter);
 }

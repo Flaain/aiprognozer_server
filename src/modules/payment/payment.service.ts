@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PaymentRepository } from './payment.repository';
-import { Types } from 'mongoose';
+import { ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
 import { Product } from '../product/schema/product.schema';
+import { Payment } from './schema/payment.schema';
 
 @Injectable()
 export class PaymentService {
@@ -12,16 +13,29 @@ export class PaymentService {
     ) {}
 
     public getCurrentLadder = async (userId: Types.ObjectId) => {
-        const [data] = await this.paymentRepository.getCurrentLadder(userId);
+        const [product] = await this.paymentRepository.getCurrentLadder(userId);
 
-        if (!data) {
+        if (!product) {
             const product = await this.productService.getFirstLadderProduct();
 
-            return product.toObject<Product>();
+            return {
+                ...product.toObject<Product>(),
+                canBuy: true
+            }
         }
 
-        const { nextProduct, ...product } = data;
-
-        return product.isLastProductWasPurchased ? product : nextProduct;
+        return product;
     };
+
+    public isAlreadyPayed = async (userId: Types.ObjectId, productId: Types.ObjectId) => this.paymentRepository.isAlreadyPayed(userId, productId);
+
+    public exists = async (filter: RootFilterQuery<Payment>) => this.paymentRepository.exists(filter);
+
+    public findPaymentOrCreate = async (filter?: RootFilterQuery<Payment>, update?: UpdateQuery<Payment>, options?: QueryOptions<Payment>) => this.paymentRepository.findOneAndUpdate(filter, update, options);
+
+    public findOne = async (filter?: RootFilterQuery<Payment>, projection?: ProjectionType<Payment>, options?: QueryOptions<Payment>) => this.paymentRepository.findOne(filter, projection, options);
+
+    public create = async (payment: Payment) => this.paymentRepository.create(payment);
+
+    public findOneAndUpdate = async (filter?: RootFilterQuery<Payment>, update?: UpdateQuery<Payment>, options?: QueryOptions<Payment>) => this.paymentRepository.findOneAndUpdate(filter, update, options);
 }

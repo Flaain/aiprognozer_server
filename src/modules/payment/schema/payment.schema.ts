@@ -23,6 +23,9 @@ export class Payment {
     @Prop({ type: Number, enum: Object.values(PAYMENT_STATUS), required: true })
     status: PaymentStatus;
 
+    @Prop({ type: String, required: true, index: true, unique: true })
+    requestId: string;
+
     @Prop({ type: String })
     invoicePayload?: string;
 
