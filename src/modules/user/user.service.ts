@@ -4,9 +4,9 @@ import { PostbackType, UserDocument } from './types/types';
 import { Connection } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
-import { Bot } from 'grammy';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from 'src/shared/exceptions/app.exception';
+import { TgProvider } from '../tg/types';
 
 @Injectable()
 export class UserService {
@@ -14,7 +14,7 @@ export class UserService {
 
     constructor(
         @InjectConnection() private readonly connection: Connection,
-        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot,
+        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
     ) {}
@@ -52,7 +52,7 @@ export class UserService {
 
         await this.userRepository.createReferall(onewin_id);
 
-        this.tgBot.api.sendMessage(
+        this.tgProvider.bot.api.sendMessage(
             this.configService.getOrThrow<number>('NEW_LEED_GROUP_ID'),
             `*📣 Новая регистрация!*\n\n🆔 ID: ${onewin_id}\n🌍 Страна: ${country}\n${type === 'PROMO' ? '🎟️ Промокод' : '🔗 Ссылка'}: ${name}`,
             { parse_mode: 'Markdown' }
