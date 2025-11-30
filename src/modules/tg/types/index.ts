@@ -1,5 +1,6 @@
 import { ModuleMetadata } from '@nestjs/common';
-import { BotConfig, Context } from 'grammy';
+import { Bot, BotConfig, Context } from 'grammy';
+import { UserFromGetMe } from 'grammy/types';
 
 export interface TgModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
     useFactory: (...args: Array<any>) => Promise<TgModuleOptions> | TgModuleOptions;
@@ -9,4 +10,11 @@ export interface TgModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
 export interface TgModuleOptions {
     token: string;
     config?: BotConfig<Context>;
+}
+
+export interface TgProvider {
+    bot: Bot;
+    subscribers: Set<(botInfo: UserFromGetMe) => void>;
+    subscribe: (subscriber: (botInfo: UserFromGetMe) => void) => () => void;
+    notify: (botInfo: UserFromGetMe) => void;
 }

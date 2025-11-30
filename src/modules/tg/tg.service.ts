@@ -1,14 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
+import { CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
 import { bot_commands } from './constants';
 import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
-import { limit } from "@grammyjs/ratelimiter";
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
-import { ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
+import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { TgProvider } from './types';
 
 @Injectable()
 export class TgService {
@@ -16,10 +16,10 @@ export class TgService {
     private readonly isProduction: boolean;
 
     constructor(
-        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot<ConversationFlavor<Context>>,
+        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
-        private readonly dashboardService: DashboardService
+        private readonly dashboardService: DashboardService,
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
 
@@ -44,7 +44,7 @@ export class TgService {
     };
 
     private notifyAboutNewUser = (user: WebAppUser) => {
-        this.tgBot.api.sendMessage(
+        this.tgProvider.bot.api.sendMessage(
             this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
             `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
             { parse_mode: 'Markdown', disable_notification: !this.isProduction },
@@ -69,21 +69,40 @@ export class TgService {
         ctx.reply(`Актуальная ссылка для регистрации - ${link.toString()}`);
     };
 
+    private handleRefund = async (conversation: Conversation, ctx: CommandContext<ConversationFlavor<Context>>) => {
+        try {
+            ctx.reply('Отправьте telegram_payment_charge_id');
+
+            const { message } = await conversation.waitFor('message:text', { next: true });
+
+            await ctx.api.refundStarPayment(ctx.chat.id, message.text);
+
+            ctx.reply('Платеж возвращен');
+
+            return;
+        } catch (error) {
+            ctx.reply('Произошла ошибка');
+        }
+    }
+
     private init = async () => {
         try {
-            this.tgBot.catch(this.handleCatch.bind(this));
+            this.tgProvider.bot.catch(this.handleCatch.bind(this));
 
-            await this.tgBot.api.setMyCommands(bot_commands);
+            await this.tgProvider.bot.api.setMyCommands(bot_commands);
             
-            this.tgBot.use(limit({ limit: 1, timeFrame: 500 }));
+            // this.tgProvider.bot.use(limit({ limit: 1, timeFrame: 500 }));
             
-            this.tgBot.use(conversations());
-            this.tgBot.use(createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), 'dashboard/link'));
+            this.tgProvider.bot.use(conversations());
+            this.tgProvider.bot.use(createConversation(this.handleRefund, 'refund-conversation'));
             
-            this.tgBot.command('link', this.getLink.bind(this));
-            this.tgBot.command('start', this.onStart.bind(this));
+            this.tgProvider.bot.command('link', this.getLink.bind(this));
+            this.tgProvider.bot.command('start', this.onStart.bind(this));
+            this.tgProvider.bot.command('refund', async (ctx: CommandContext<ConversationFlavor<Context>>) => {
+                await ctx.conversation.enter('refund-conversation');
+            });
 
-            this.tgBot.start();
+            this.tgProvider.bot.start({ onStart: (botInfo) => this.tgProvider.notify(botInfo) });
             
             this.logger.log('🚀 bot is running');
         } catch (error) {
