@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { CORS, PROVIDERS } from './shared/constants';
-import { Bot } from 'grammy';
+import { TgProvider } from './modules/tg/types';
 
 (async () => {
     try {
@@ -18,7 +18,7 @@ import { Bot } from 'grammy';
             try {
                 console.log(`🛑 Received ${signal}, starting graceful shutdown...`);
 
-                await app.get<Bot>(PROVIDERS.TG_BOT).stop();
+                await app.get<TgProvider>(PROVIDERS.TG_PROVIDER).bot.stop();
                 await app.close();
                 
                 console.log('✅ Application closed gracefully');

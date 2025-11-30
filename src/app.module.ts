@@ -15,6 +15,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PaymentModule } from './modules/payment/payment.module';
 import { ProductModule } from './modules/product/product.module';
 import { StoreModule } from './modules/store/store.module';
+import { GatewayModule } from './modules/gateway/gateway.module';
 
 @Module({
     imports: [
@@ -35,7 +36,8 @@ import { StoreModule } from './modules/store/store.module';
         AnalysisModule,
         PaymentModule,
         ProductModule,
-        StoreModule
+        StoreModule,
+        GatewayModule
     ],
     controllers: [AppController],
     providers: [
