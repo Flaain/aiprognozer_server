@@ -5,15 +5,15 @@ import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
 import { InitDataInRequest } from 'src/shared/types';
 import { PROVIDERS } from 'src/shared/constants';
-import { Bot } from 'grammy';
 import { ms } from 'src/shared/utils/ms';
+import { TgProvider } from '../tg/types';
 
 @Injectable()
 export class AuthService {
     private readonly isProduction: boolean;
 
     constructor(
-        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot,
+        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
     ) {
@@ -73,7 +73,7 @@ export class AuthService {
     };
 
     private notifyAboutNewUser = (user: WebAppUser) => {
-        this.tgBot.api.sendMessage(
+        this.tgProvider.bot.api.sendMessage(
             this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
             `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
             { parse_mode: 'Markdown', disable_notification: !this.isProduction },

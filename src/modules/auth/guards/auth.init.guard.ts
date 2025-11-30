@@ -12,9 +12,9 @@ export class InitGuard implements CanActivate {
     ) {}
 
     async canActivate(context: ExecutionContext) {
-        const handler = context.getHandler();
+        const targets = [context.getHandler(), context.getClass()]
 
-        if (this.reflector.get<boolean>(PUBLIC_KEY, handler)) return true;
+        if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) return true;
 
         const request = context.switchToHttp().getRequest();
 
@@ -24,7 +24,7 @@ export class InitGuard implements CanActivate {
 
         request.init_data = this.authService.parseInitData(data);
 
-        this.reflector.get<boolean>(AUTH_KEY, handler) && (request.user = await this.authService.validate(request.init_data.user.id));
+        this.reflector.getAllAndOverride<boolean>(AUTH_KEY, targets) && (request.user = await this.authService.validate(request.init_data.user.id));
 
         return true;
     }
