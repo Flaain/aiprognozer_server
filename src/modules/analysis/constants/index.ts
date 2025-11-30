@@ -10,10 +10,11 @@ const ALLOWED_SPORT_TYPES: Array<SportType> = ['basketball', 'football', 'mma'];
 export const ALLOWED_MIMETYPES = ['image/png', 'image/jpeg'];
 export const PREDICTION_SIZE= 5;
 export const MAX_SIZE = 10 * 1024 ** 2;
+
 export const MIN_PREDICTION_PROBABILITY_PERCENT = 75;
 export const MAX_PREDICTION_PROBABILITY_PERCENT = 89;
 export const MIN_ALTERNATIVE_PROBABILITY_PERCENT = 39;
-export const MAX_ALTERNATIVE_PROBABILITY_PERCENT = 70;
+export const MAX_ALTERNATIVE_PROBABILITY_PERCENT = 65;
 
 export const filePipe = new ParseFilePipe({
     fileIsRequired: true,

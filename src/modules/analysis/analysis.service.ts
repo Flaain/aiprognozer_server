@@ -10,11 +10,11 @@ import {
     PREDICTION_SIZE,
 } from './constants';
 import { PROVIDERS } from 'src/shared/constants';
-import { Bot } from 'grammy';
+import { TgProvider } from '../tg/types';
 
 @Injectable()
 export class AnalysisService {
-    constructor(@Inject(PROVIDERS.TG_BOT) private readonly tgBot: Bot) {}
+    constructor(@Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider) {}
 
     analysis = async (user: UserDocument, type: SportType, _: Express.Multer.File) => {
         const variants = JSON.parse(await readFile('./variants.json', 'utf-8'));
@@ -50,7 +50,7 @@ export class AnalysisService {
 
         await user.save();
 
-        this.tgBot.api.sendMessage(
+        this.tgProvider.bot.api.sendMessage(
             user.telegram_id, 
             `<b>Анализ завершен</b>\n\n<b>Основной прогзноз — <u>${prediction.name}</u></b>\n<b>Уверенность ИИ — ${prediction.probability}%</b>\n\n<blockquote expandable>${prediction.reasoning}</blockquote>\n\n<b>Альтертативные прогнозы:</b>\n\n${alternatives.map((alternative) => `${alternative.name} — ${alternative.probability}%`).join('\n')}\n\n<tg-spoiler><i>Отказ от ответственности — Обратите внимание, что все аналитические данные, выводы и прогнозы генерируются системой искусственного интеллекта (ИИ). Как и любая сложная технология, наш ИИ не застрахован от ошибок и может допускать неточности или неверно интерпретировать контекст.\n\nИнформация предоставляется исключительно в ознакомительных целях и не является руководством к действию или профессиональной консультацией. Мы не несем ответственности за любые решения, принятые вами на основе этого анализа.</i></tg-spoiler>\n\n#анализ`,
             {
