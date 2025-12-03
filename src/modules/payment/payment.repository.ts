@@ -46,6 +46,7 @@ export class PaymentRepository {
                     },
                 },
             },
+            { $replaceRoot: { newRoot: '$product' } },
         ]);
 
         public isAlreadyPayed = (userId: Types.ObjectId, productId: Types.ObjectId) => this.paymentModel.exists({ userId, productId, status: PAYMENT_STATUS.PAID });
