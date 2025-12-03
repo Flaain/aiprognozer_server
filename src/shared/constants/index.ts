@@ -22,3 +22,8 @@ export const defaultResponse = { message: 'OK' };
 export const PROVIDERS = {
     TG_PROVIDER: 'TG_PROVIDER',
 } as const;
+
+export const MESSAGE_EFFECT_ID = {
+    CONFETTI: '5046509860389126442',
+    FLAME: '5104841245755180586'
+} as const;
