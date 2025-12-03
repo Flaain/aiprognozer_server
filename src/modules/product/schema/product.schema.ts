@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { PRODUCT_TYPE } from '../constants';
-import { PRODUCT_SLUGS, ProductType } from '../types';
+import { PRODUCT_EFFECT, PRODUCT_TYPE } from '../constants';
+import { PRODUCT_SLUGS, ProductEffect, ProductType } from '../types';
 
 @Schema({ timestamps: true })
 export class Product {
@@ -24,6 +24,18 @@ export class Product {
 
     @Prop({ type: String, enum: PRODUCT_SLUGS })
     next?: PRODUCT_SLUGS;
+
+    @Prop({
+        type: [
+            {
+                _id: { _id: false },
+                value: Number,
+                effect_type: { type: String, enum: Object.values(PRODUCT_EFFECT), required: true },
+                target: String,
+            },
+        ],
+    })
+    effect?: Array<ProductEffect>;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
