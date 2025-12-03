@@ -6,9 +6,10 @@ import { PaymentModule } from '../payment/payment.module';
 import { PROVIDERS } from 'src/shared/constants';
 import { TgProvider } from '../tg/types';
 import { GatewayModule } from '../gateway/gateway.module';
+import { UserModule } from '../user/user.module';
 
 @Module({
-    imports: [ProductModule, PaymentModule, GatewayModule],
+    imports: [ProductModule, PaymentModule, GatewayModule, UserModule],
     providers: [StoreService],
     controllers: [StoreController],
 })
