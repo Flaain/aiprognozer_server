@@ -6,7 +6,7 @@ import { Connection, isValidObjectId, Types } from 'mongoose';
 import { PRODUCT_TYPE } from '../product/constants';
 import { ProductDocument } from '../product/types';
 import { PAYMENT_STATUS } from '../payment/constants';
-import { PROVIDERS } from 'src/shared/constants';
+import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
 import { ms } from 'src/shared/utils/ms';
 import { TgProvider } from '../tg/types';
 import { GatewayService } from '../gateway/gateway.service';
@@ -178,6 +178,15 @@ export class StoreService {
             this.gatewayService.sockets.get(payload.userId)?.forEach((socket) => {
                 socket.emit(STORE_EVENTS.PRODUCT_BUY, { ...restProduct, payedAt }, nextProduct);
             });
+
+            this.tgProvider.bot.api.sendMessage(
+                user.telegram_id,
+                `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ${product.price}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
+                {
+                    parse_mode: 'HTML',
+                    message_effect_id: MESSAGE_EFFECT_ID.CONFETTI
+                }
+            )
 
             await session.commitTransaction();
         } catch (error) {
