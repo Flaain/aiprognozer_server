@@ -21,8 +21,8 @@ export class ProductRepository {
     public findById = (id: Types.ObjectId | string, projection?: ProjectionType<Product>, options?: QueryOptions<Product>) =>
         this.productModel.findById(id, projection, options);
 
-    public aggregate = (pipeline?: Array<PipelineStage>, options?: AggregateOptions) =>
-        this.productModel.aggregate<Product>(pipeline, options);
+    public aggregate = <T = Product>(pipeline?: Array<PipelineStage>, options?: AggregateOptions) =>
+        this.productModel.aggregate<T>(pipeline, options);
 
     public getProducts = (userId: Types.ObjectId) =>
         this.productModel.aggregate<Product & { canBuy: boolean; lastBuyAt?: Date }>([
