@@ -9,7 +9,7 @@ import {
     MIN_PREDICTION_PROBABILITY_PERCENT,
     PREDICTION_SIZE,
 } from './constants';
-import { PROVIDERS } from 'src/shared/constants';
+import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
 import { TgProvider } from '../tg/types';
 
 @Injectable()
@@ -55,7 +55,7 @@ export class AnalysisService {
             `<b>Анализ завершен</b>\n\n<b>Основной прогзноз — <u>${prediction.name}</u></b>\n<b>Уверенность ИИ — ${prediction.probability}%</b>\n\n<blockquote expandable>${prediction.reasoning}</blockquote>\n\n<b>Альтертативные прогнозы:</b>\n\n${alternatives.map((alternative) => `${alternative.name} — ${alternative.probability}%`).join('\n')}\n\n<tg-spoiler><i>Отказ от ответственности — Обратите внимание, что все аналитические данные, выводы и прогнозы генерируются системой искусственного интеллекта (ИИ). Как и любая сложная технология, наш ИИ не застрахован от ошибок и может допускать неточности или неверно интерпретировать контекст.\n\nИнформация предоставляется исключительно в ознакомительных целях и не является руководством к действию или профессиональной консультацией. Мы не несем ответственности за любые решения, принятые вами на основе этого анализа.</i></tg-spoiler>\n\n#анализ`,
             {
                 parse_mode: 'HTML',
-                message_effect_id: '5046509860389126442'
+                message_effect_id: MESSAGE_EFFECT_ID.FLAME
             }
         )
 
