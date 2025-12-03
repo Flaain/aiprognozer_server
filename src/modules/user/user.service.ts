@@ -1,12 +1,14 @@
 import { ConflictException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { UserRepository } from './user.repository';
 import { PostbackType, UserDocument } from './types/types';
-import { Connection } from 'mongoose';
+import { ClientSession, Connection, ProjectionType, QueryOptions, RootFilterQuery, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from 'src/shared/exceptions/app.exception';
 import { TgProvider } from '../tg/types';
+import { User } from './schemas/user.schema';
+import { ProductEffect } from '../product/types';
 
 @Injectable()
 export class UserService {
@@ -60,4 +62,33 @@ export class UserService {
         
         return defaultResponse;
     };
+
+    public findById = (id: string | Types.ObjectId, projection?: ProjectionType<User>, options?: QueryOptions<User>) => this.userRepository.findById(id, projection, options);
+
+    public applyProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, session?: ClientSession) => {
+        const toObjectUser = user.toObject();
+
+        for (const { effect_type, target, value } of effect.filter(({ target }) => toObjectUser.hasOwnProperty(target))) {
+            const isNums = typeof user[target] === 'number' && typeof value === 'number';
+
+            switch (effect_type) {
+                case 'inc':
+                    isNums && (user[target] += value);
+                    break;
+                case 'dec':
+                    isNums && (user[target] -= value);
+                    break;
+                case 'reset':
+                    user[target] = 0;
+                    break;
+                case 'set':
+                    user[target] = value;
+                    break;
+            }
+        }
+
+        await user.save({ session });
+    }
+
+    public isExists = async (filter: RootFilterQuery<User>) => this.userRepository.exists(filter);
 }

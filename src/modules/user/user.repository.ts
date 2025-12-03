@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema';
-import { ClientSession, Model, QueryOptions, RootFilterQuery, UpdateQuery } from 'mongoose';
+import { ClientSession, Model, ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
 import { Referalls } from './schemas/referall.schema';
 import { UserDocument } from './types/types';
 
@@ -20,6 +20,8 @@ export class UserRepository {
         { new: true, upsert: true, includeResultMetadata: true },
     );
 
+    findById = (id: string | Types.ObjectId, projection?: ProjectionType<User>, options?: QueryOptions<User>) => this.userModel.findById(id, projection, options);
+
     createUser = (telegram_id: number) => this.userModel.create({ telegram_id });
 
     createReferall = (onewin_id: number) => this.referallsModel.create({ onewin_id });
@@ -31,4 +33,6 @@ export class UserRepository {
     referallExists = (filter: RootFilterQuery<Referalls>) => this.referallsModel.exists(filter);
 
     findReferall = (onewin_id: number, session?: ClientSession) => this.referallsModel.findOne({ onewin_id }, { user_id: 1 }, { session });
+
+    exists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 }

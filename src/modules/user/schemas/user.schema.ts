@@ -32,9 +32,6 @@ export class User implements IUser {
 
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Referalls' })
     referall?: mongoose.Types.ObjectId;
-
-    @Prop({ type: [{ type: mongoose.Schema.Types.ObjectId }], ref: 'Payments', required: true })
-    payments: Array<mongoose.Types.ObjectId>;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
