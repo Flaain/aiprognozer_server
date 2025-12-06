@@ -1,8 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ProductRepository } from './product.repository';
 import { PRODUCT_TYPE } from './constants';
 import { AggregateOptions, PipelineStage, ProjectionType, QueryOptions, RootFilterQuery, Types } from 'mongoose';
-import { PRODUCT_SLUGS } from './types';
 import { Product } from './schema/product.schema';
 
 @Injectable()
@@ -13,9 +12,21 @@ export class ProductService {
 
     public getProducts = (userId: Types.ObjectId) => this.productRepository.getProducts(userId);
 
-    public getProductById = (productId: Types.ObjectId | string, projection?: ProjectionType<Product>) => this.productRepository.findById(productId, projection);
+    public getProductById = async (productId: Types.ObjectId | string, projection?: ProjectionType<Product>) => {
+        const product = await this.productRepository.findById(productId, projection);
 
-    public getProductBySlug = (slug: PRODUCT_SLUGS) => this.productRepository.findOne({ slug });
+        if (!product) throw new NotFoundException('Product not found');
+
+        return product;
+    }
+
+    public getProductBySlug = async (slug: string) => {
+        const product = await this.productRepository.findOne({ slug });
+
+        if (!product) throw new NotFoundException('Product not found');
+
+        return product;
+    }
 
     public findOne = (filter?: RootFilterQuery<Product>, projection?: ProjectionType<Product>, options?: QueryOptions<Product>) => this.productRepository.findOne(filter, projection, options);
 

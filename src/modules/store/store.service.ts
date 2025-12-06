@@ -16,7 +16,7 @@ import { STORE_EVENTS } from './constants';
 import { InjectConnection } from '@nestjs/mongoose';
 import { UserService } from '../user/user.service';
 import { Product } from '../product/schema/product.schema';
-import { GetInvoiceOrPreCheckoutQueryMode } from './types';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StoreService {
@@ -27,6 +27,7 @@ export class StoreService {
         private readonly productService: ProductService,
         private readonly gatewayService: GatewayService,
         private readonly userService: UserService,
+        private readonly configService: ConfigService,
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         @InjectConnection() private readonly connection: Connection,
     ) {}
@@ -35,108 +36,154 @@ export class StoreService {
         const currentLadder = await this.paymentService.getCurrentLadder(user._id);
         const products = await this.productService.getProducts(user._id);
 
-        return { products: [...products, currentLadder] };
+        return { 
+            products: [
+                ...products.map((product) => product.price ? product : { ...product, price: this.calculateDynamicProductPrice(product, user) }), 
+                currentLadder
+            ] 
+        };
     };
 
-    private createInvoice = async (userId: Types.ObjectId, product: ProductDocument) => {
-        const requestId = crypto.randomUUID();
+    private calculateDynamicProductPrice = (product: ProductDocument | Product, user: UserDocument) => {
+        switch(product.slug) {
+            case 'daily_requests_reset':
+                const raw = user.request_limit / 0.02;
+                // const commission = (raw * 30) / 100;
 
+                return Math.round(raw)
+            default:
+                throw new BadRequestException(`Cannot calculate dynamic price. Unknown product slug: ${product.slug}`);
+        }
+    }
+
+    private createInvoice = async (user: UserDocument, product: ProductDocument, paymentId: string) => {
         const invoice = await this.tgProvider.bot.api.createInvoiceLink(
             product.name,
             product.description,
             JSON.stringify({
-                userId,
+                userId: user._id.toString(),
                 productId: product._id.toString(),
-                requestId,
+                paymentId,
             }),
             '',
             'XTR',
-            [{ amount: 1, label: product.name }],
+            [{ 
+                amount: this.configService.getOrThrow('NODE_ENV') === 'development' ? 1 : product.price ?? this.calculateDynamicProductPrice(product, user), 
+                label: product.name
+            }],
         );
-
-        await this.paymentService.create({
-            userId,
-            productId: product._id,
-            productPrice: product.price,
-            productName: product.name,
-            productDescription: product.description,
-            status: PAYMENT_STATUS.PENDING,
-            requestId,
-            invoiceUrl: invoice,
-        });
 
         return invoice;
     };
 
-    private getLadderProductInvoice = async (userId: Types.ObjectId, product: ProductDocument, mode: GetInvoiceOrPreCheckoutQueryMode) => {
-        const payment = await this.paymentService.findOne({ userId, productId: product._id });
-
-        if (payment?.status === PAYMENT_STATUS.PAID) {
-            throw new BadRequestException(`Cannot create ${mode}. Product already payed`);
-        }
-
+    private isPreviousProductPayed = async (user: UserDocument, product: ProductDocument) => {
         if (product.prev) {
             const prev = await this.productService.getProductBySlug(product.prev!);
 
-            if (!(await this.paymentService.isAlreadyPayed(userId, prev._id))) {
-                throw new BadRequestException(`Cannot create ${mode}. Previous product not payed`);
+            if (!(await this.paymentService.isAlreadyPayed(user._id, prev._id))) {
+                throw new BadRequestException('Cannot create invoice. Previous product not payed');
             }
         }
 
-        return mode === 'invoice' ? (payment ? payment.invoiceUrl : this.createInvoice(userId, product)) : true;
+        return true;
+    }
+
+    private getLadderProductInvoice = async (user: UserDocument, product: ProductDocument) => {
+        await this.isPreviousProductPayed(user, product);
+        
+        const payment = await this.paymentService.findOneAndUpdate(
+            { userId: user._id, productId: product._id, status: { $ne: PAYMENT_STATUS.REFUNDED } },
+            { 
+                $setOnInsert: { 
+                    status: PAYMENT_STATUS.PENDING, 
+                    productDescription: product.description, 
+                    productName: product.name, 
+                    productPrice: product.price 
+                } 
+            },
+            { upsert: true }
+        );
+
+        if (payment?.status === PAYMENT_STATUS.PAID) {
+            throw new BadRequestException('Cannot create invoice. Product already payed');
+        }
+
+        return this.createInvoice(user, product, payment._id.toString());
     };
 
-    private getDailyProductInvoice = async (userId: Types.ObjectId, product: ProductDocument, mode: GetInvoiceOrPreCheckoutQueryMode) => {
-        const payment = await this.paymentService.findOne({ userId, productId: product._id }, null, { sort: { createdAt: -1 } });
-        const isInvoiceMode = mode === 'invoice';
+    private getDailyProductInvoice = async (user: UserDocument, product: ProductDocument) => {
+        const payment = await this.paymentService.findOne({ userId: user._id, productId: product._id }, null, { sort: { createdAt: -1 } });
 
-        if (!payment) return isInvoiceMode ? this.createInvoice(userId, product) : false;
+        if (!payment || payment.status === PAYMENT_STATUS.REFUNDED) {
+            const payment = await this.paymentService.create({
+                productDescription: product.description,
+                productName: product.name,
+                productPrice: product.price,
+                userId: user._id,
+                productId: product._id,
+                status: PAYMENT_STATUS.PENDING
+            });
+
+            return this.createInvoice(user, product, payment._id.toString());
+        }
 
         if (payment.status === PAYMENT_STATUS.PAID) {
             if (+new Date(+new Date(payment.payedAt) + ms('24h')) > Date.now()) {
-                throw new BadRequestException(`Cannot create ${mode}. Daily product was already payed today`);
+                throw new BadRequestException('Cannot create invoice. Daily product was already payed today');
             } else {
-                if (!isInvoiceMode) throw new BadRequestException(`Cannot answer pre_checkout_query before creating invoice`);
-
-                return this.createInvoice(userId, product);
+                const payment = await this.paymentService.create({
+                    productDescription: product.description,
+                    productName: product.name,
+                    productPrice: product.price,
+                    userId: user._id,
+                    productId: product._id,
+                    status: PAYMENT_STATUS.PENDING
+                });
+    
+                return this.createInvoice(user, product, payment._id.toString());
             }
         }
 
-        return isInvoiceMode ? payment.invoiceUrl : true;
+        return this.createInvoice(user, product, payment._id.toString());
     };
 
-    private getDefaultProductInvoice = async (userId: Types.ObjectId, product: ProductDocument, mode: GetInvoiceOrPreCheckoutQueryMode) => {
-        const payment = await this.paymentService.findOne({ userId, productId: product._id });
-        const isInvoiceMode = mode === 'invoice';
-
-        if (!payment) return isInvoiceMode ? this.createInvoice(userId, product) : false;
+    private getDefaultProductInvoice = async (user: UserDocument, product: ProductDocument, ) => {
+        const payment = await this.paymentService.findOneAndUpdate(
+            { userId: user._id, productId: product._id, status: { $ne: PAYMENT_STATUS.REFUNDED } },
+            {
+                $setOnInsert: {
+                    status: PAYMENT_STATUS.PENDING,
+                    productDescription: product.description,
+                    productName: product.name,
+                    productPrice: product.price
+                }
+            }
+        )
 
         if (payment.status === PAYMENT_STATUS.PAID) {
-            throw new BadRequestException(`Cannot create ${mode}. Product already payed`);
+            throw new BadRequestException(`Cannot create invoice. Product already payed`);
         }
 
-        return isInvoiceMode ? payment.invoiceUrl : true;
+        return this.createInvoice(user, product, payment._id.toString());
     };
 
-    public getInvoiceOrPreCheckout = async (userId: Types.ObjectId, productId: string, mode: GetInvoiceOrPreCheckoutQueryMode) => {
+    public getInvoiceOrPreCheckout = async (user: UserDocument, productId: string) => {
         const product = await this.productService.getProductById(productId);
-
-        if (!product) throw new NotFoundException('Product not found');
 
         switch (product.type) {
             case PRODUCT_TYPE.LADDER:
-                return this.getLadderProductInvoice(userId, product, mode);
+                return this.getLadderProductInvoice(user, product);
             case PRODUCT_TYPE.DAILY:
-                return this.getDailyProductInvoice(userId, product, mode);
+                return this.getDailyProductInvoice(user, product);
             case PRODUCT_TYPE.DEFAULT:
-                return this.getDefaultProductInvoice(userId, product, mode);
+                return this.getDefaultProductInvoice(user, product);
             default:
                 throw new BadRequestException('Invalid product type');
         }
     };
 
     public handleSuccessfulPayment = async (ctx: Context) => {
-        const payedAt = new Date().toISOString();
+        const payedAt = new Date();
         const payload = this.validateInvoicePayload(ctx.message.successful_payment.invoice_payload);
         
         const session = await this.connection.startSession();
@@ -145,9 +192,7 @@ export class StoreService {
 
         try {
             const user = await this.userService.findById(payload.userId, undefined, { session });
-
-            if (!user) throw new NotFoundException('User not found');
-
+            
             const product = (
                 await this.productService.aggregate<Product & { nextProduct: Product }>(
                     [
@@ -162,10 +207,11 @@ export class StoreService {
             if (!product) throw new NotFoundException('Product not found');
             
             await this.paymentService.findOneAndUpdate(
-                { requestId: payload.requestId },
-                { 
+                { _id: payload.paymentId },
+                {
                     payedAt,
-                    status: PAYMENT_STATUS.PAID, 
+                    status: PAYMENT_STATUS.PAID,
+                    productPrice: ctx.message.successful_payment.total_amount,
                     telegramPaymentChargeId: ctx.message.successful_payment.telegram_payment_charge_id
                 },
                 { session }
@@ -179,14 +225,16 @@ export class StoreService {
                 socket.emit(STORE_EVENTS.PRODUCT_BUY, { ...restProduct, payedAt }, nextProduct);
             });
 
-            this.tgProvider.bot.api.sendMessage(
-                user.telegram_id,
-                `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ${product.price}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
-                {
-                    parse_mode: 'HTML',
-                    message_effect_id: MESSAGE_EFFECT_ID.CONFETTI
-                }
-            )
+            this.tgProvider.bot.api
+                .sendMessage(
+                    ctx.chat.id,
+                    `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ${ctx.message.successful_payment.total_amount}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
+                    {
+                        parse_mode: 'HTML',
+                        message_effect_id: MESSAGE_EFFECT_ID.CONFETTI,
+                    },
+                )
+                .catch((error) => this.logger.error(error));
 
             await session.commitTransaction();
         } catch (error) {
@@ -198,18 +246,76 @@ export class StoreService {
         }
     };
 
+    public handleRefundedPayment = async (ctx: Context) => {
+        const refundedAt = new Date();
+
+        const { userId, paymentId, productId } = this.validateInvoicePayload(ctx.message.refunded_payment.invoice_payload);
+
+        const session = await this.connection.startSession();
+
+        session.startTransaction();
+
+        try {
+            const { 0: user, 1: product } = await Promise.all([
+                this.userService.findById(userId),
+                this.productService.getProductById(productId),
+            ])
+
+            await this.paymentService.findOneAndUpdate(
+                { _id: paymentId },
+                { status: PAYMENT_STATUS.REFUNDED, refundedAt },
+                { session },
+            );
+
+            await this.userService.removeProductEffect(user, product.effect, session);
+
+            this.tgProvider.bot.api
+                .sendMessage(
+                    ctx.chat.id,
+                    `<b>Уведомление о возврате средств</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы зафиксировали возврат платежа за <b>"${product.name}"</b>.\n\n<b>Детали операции:</b>\n\nID платежа — <code>${ctx.message.refunded_payment.telegram_payment_charge_id}</code>\nСумма возврата — ${ctx.message.refunded_payment.total_amount}\n\nВ связи с возвратом все эффекты приобретённого продукта были отключены и удалены из вашего аккаунта.\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#возврат`,
+                    {
+                        parse_mode: 'HTML',
+                        message_effect_id: MESSAGE_EFFECT_ID.CONFETTI,
+                    },
+                )
+                .catch((error) => this.logger.error(error));
+            
+            // this.gatewayService.sockets.get(userId)?.forEach((socket) => {
+            //     socket.emit(STORE_EVENTS.PRODUCT_REFUNDED, { ...product, refundedAt });
+            // });
+
+            await session.commitTransaction();
+        } catch (error) {
+            this.logger.error(error);
+            await session.abortTransaction();   
+        } finally {
+            session.endSession();
+        }
+    };
+
     public handlePreCheckoutQuery = async (ctx: Context) => {
         try {
-            const { productId, userId } = this.validateInvoicePayload(ctx.preCheckoutQuery.invoice_payload);
+            const { productId, userId, paymentId } = this.validateInvoicePayload(ctx.preCheckoutQuery.invoice_payload);
 
-            if (!(await this.userService.isExists({ _id: userId }))) throw new NotFoundException('User not found');
+            if (await this.paymentService.isAlreadyPayedOrRefunded(new Types.ObjectId(paymentId))) {
+                throw new BadRequestException('Cannot proceed payment. This invoice was already payed or refunded.');
+            }
 
-            await this.getInvoiceOrPreCheckout(new Types.ObjectId(userId), productId, 'pre_checkout_query');
+            const { 0: user, 1: product } = await Promise.all([
+                this.userService.findById(userId),
+                this.productService.getProductById(productId),
+            ])
 
+            // if (ctx.preCheckoutQuery.total_amount !== (product.price ?? this.calculateDynamicProductPrice(product, user))) {
+            //     throw new BadRequestException('Canoot proceed payment. Product price has changed, please create a new invoice.');
+            // }
+
+            await this.isPreviousProductPayed(user, product);
+            
             return ctx.answerPreCheckoutQuery(true);
         } catch (error) {
             this.logger.error(error);
-            return ctx.answerPreCheckoutQuery(false, { error_message: 'Cannot handle payment. Please try again, if the problem persists, contact support' });
+            return ctx.answerPreCheckoutQuery(false, { error_message: error.message });
         }
     };
 
@@ -218,25 +324,19 @@ export class StoreService {
 
         if (parsed === null || parsed.constructor.name !== 'Object') throw new BadRequestException('Invalid payload');
         
-        const fields: Record<keyof InvoicePayload, (value: unknown) => boolean> = {
-            userId: (value: unknown) => typeof value === 'string' && isValidObjectId(value),
-            productId: (value: unknown) => typeof value === 'string' && isValidObjectId(value),
-            requestId: (value: unknown) => typeof value === 'string' && /^([0-9a-fA-F]{8})-(([0-9a-fA-F]{4}\-){3})([0-9a-fA-F]{12})$/i.test(value)
-        };
-
-        const fieldsKeys = Object.keys(fields);
+        const fields: Array<keyof InvoicePayload> = ['paymentId', 'productId', 'userId'];
         const payloadKeys = Object.keys(parsed);
 
         if (!payloadKeys.length) throw new BadRequestException('Empty payload');
 
-        if (payloadKeys.length !== fieldsKeys.length) throw new BadRequestException('Unknown keys length in payload');
+        if (payloadKeys.length !== fields.length) throw new BadRequestException('Unknown keys length in payload');
 
         for (const key of payloadKeys) {
-            if (!fields.hasOwnProperty(key)) {
+            if (!fields.includes(key as keyof InvoicePayload)) {
                 throw new BadRequestException(`Unknown payload key: ${key}`);
             }
 
-            if (!fields[key](parsed[key])) {
+            if (!isValidObjectId(parsed[key])) {
                 throw new BadRequestException(`Invalid payload value: ${parsed[key]} in key: ${key}`);
             }
         }

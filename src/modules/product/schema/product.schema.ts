@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { PRODUCT_EFFECT, PRODUCT_TYPE } from '../constants';
-import { PRODUCT_SLUGS, ProductEffect, ProductType } from '../types';
+import { ProductEffect, ProductType } from '../types';
 
 @Schema({ timestamps: true })
 export class Product {
@@ -10,20 +10,20 @@ export class Product {
     @Prop({ type: String, required: true })
     description: string;
 
-    @Prop({ type: Number, required: true })
-    price: number;
+    @Prop({ type: Number })
+    price?: number;
 
     @Prop({ type: Number, enum: Object.values(PRODUCT_TYPE), required: true })
     type: ProductType;
 
-    @Prop({ type: String, enum: PRODUCT_SLUGS, index: true, unique: true, required: true })
-    slug: PRODUCT_SLUGS;
+    @Prop({ type: String, index: true, unique: true, required: true })
+    slug: string;
 
-    @Prop({ type: String, enum: PRODUCT_SLUGS })
-    prev?: PRODUCT_SLUGS;
+    @Prop({ type: String })
+    prev?: string;
 
-    @Prop({ type: String, enum: PRODUCT_SLUGS })
-    next?: PRODUCT_SLUGS;
+    @Prop({ type: String })
+    next?: string;
 
     @Prop({
         type: [

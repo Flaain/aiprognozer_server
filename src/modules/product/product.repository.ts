@@ -25,7 +25,7 @@ export class ProductRepository {
         this.productModel.aggregate<T>(pipeline, options);
 
     public getProducts = (userId: Types.ObjectId) =>
-        this.productModel.aggregate<Product & { canBuy: boolean; lastBuyAt?: Date }>([
+        this.productModel.aggregate<Product & { canBuy: boolean; payedAt?: Date }>([
             { $match: { $expr: { $ne: ['$type', PRODUCT_TYPE.LADDER] } } },
             {
                 $lookup: {

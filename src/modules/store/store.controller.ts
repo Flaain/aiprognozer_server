@@ -17,6 +17,6 @@ export class StoreController {
 
     @Post(Routes.GET_INVOICE)
     getInvoice(@Req() { user }: RequestWithInitDataAndUser, @Param('productId', paramPipe) productId: string) {
-        return this.storeService.getInvoiceOrPreCheckout(user._id, productId, 'invoice');
+        return this.storeService.getInvoiceOrPreCheckout(user, productId);
     }
 }

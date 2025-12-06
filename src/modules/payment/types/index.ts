@@ -8,5 +8,5 @@ export type PaymentDocument = HydratedDocument<Payment> & SchemaTimestampsConfig
 export interface InvoicePayload {
     userId: string;
     productId: string;
-    requestId: string;
+    paymentId: string;
 }

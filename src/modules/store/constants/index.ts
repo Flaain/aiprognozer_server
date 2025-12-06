@@ -6,4 +6,5 @@ export const Routes = {
 
 export const STORE_EVENTS = {
     PRODUCT_BUY: 'product_buy',
+    PRODUCT_REFUNDED: 'product_refunded',
 } as const;

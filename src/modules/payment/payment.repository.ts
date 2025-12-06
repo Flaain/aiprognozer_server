@@ -49,7 +49,9 @@ export class PaymentRepository {
             { $replaceRoot: { newRoot: '$product' } },
         ]);
 
-        public isAlreadyPayed = (userId: Types.ObjectId, productId: Types.ObjectId) => this.paymentModel.exists({ userId, productId, status: PAYMENT_STATUS.PAID });
+        public isAlreadyPayed = (userId?: Types.ObjectId, productId?: Types.ObjectId, _id?: Types.ObjectId) => this.paymentModel.exists(_id ? { _id, status: PAYMENT_STATUS.PAID } : { userId, productId, status: PAYMENT_STATUS.PAID });
+
+        public isAlreadyPayedOrRefunded = (_id?: Types.ObjectId) => this.paymentModel.exists({ _id, status: { $in: [PAYMENT_STATUS.PAID, PAYMENT_STATUS.REFUNDED] } });
 
         public findOneAndUpdate = (filter?: RootFilterQuery<Payment>, update?: UpdateQuery<Payment>, options?: QueryOptions<Payment>) => this.paymentModel.findOneAndUpdate(filter, update, options);
 
@@ -58,4 +60,6 @@ export class PaymentRepository {
         public create = (payment: Payment) => this.paymentModel.create(payment);
 
         public exists = (filter: RootFilterQuery<Payment>) => this.paymentModel.exists(filter);
+
+        public findById = (id: Types.ObjectId | string, projection?: ProjectionType<Payment>, options?: QueryOptions<Payment>) => this.paymentModel.findById(id, projection, options);
 }

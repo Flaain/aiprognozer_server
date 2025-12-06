@@ -26,6 +26,11 @@ export class StoreModule implements OnModuleInit {
             'message:successful_payment',
             this.storeService.handleSuccessfulPayment.bind(this.storeService),
         );
+
+        this.tgProvider.bot.on(
+            'message:refunded_payment',
+            this.storeService.handleRefundedPayment.bind(this.storeService),
+        );
     }
 
     onModuleInit() {

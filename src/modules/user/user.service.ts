@@ -1,4 +1,4 @@
-import { ConflictException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRepository } from './user.repository';
 import { PostbackType, UserDocument } from './types/types';
 import { ClientSession, Connection, ProjectionType, QueryOptions, RootFilterQuery, Types } from 'mongoose';
@@ -63,7 +63,13 @@ export class UserService {
         return defaultResponse;
     };
 
-    public findById = (id: string | Types.ObjectId, projection?: ProjectionType<User>, options?: QueryOptions<User>) => this.userRepository.findById(id, projection, options);
+    public findById = async (id: string | Types.ObjectId, projection?: ProjectionType<User>, options?: QueryOptions<User>) => {
+        const user = await this.userRepository.findById(id, projection, options);
+
+        if (!user) throw new NotFoundException('User not found');
+
+        return user;
+    }
 
     public applyProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, session?: ClientSession) => {
         const toObjectUser = user.toObject();
@@ -83,6 +89,28 @@ export class UserService {
                     break;
                 case 'set':
                     user[target] = value;
+                    break;
+            }
+        }
+
+        await user.save({ session });
+    }
+
+    public removeProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, session?: ClientSession) => {
+        const toObjectUser = user.toObject();
+
+        for (const { effect_type, target, value } of effect.filter(({ target }) => toObjectUser.hasOwnProperty(target))) {
+            const isNums = typeof user[target] === 'number' && typeof value === 'number';
+
+            switch (effect_type) {
+                case 'inc':
+                    isNums && (user[target] -= value);
+                    break;
+                case 'dec':
+                    isNums && (user[target] += value);
+                    break;
+                case 'reset':
+                    user[target] = target === 'request_count' ? user.request_limit : 0;
                     break;
             }
         }
