@@ -96,7 +96,7 @@ export class UserService {
         await user.save({ session });
     }
 
-    public removeProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, session?: ClientSession) => {
+    public removeProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, refundedAt: Date, session?: ClientSession) => {
         const toObjectUser = user.toObject();
 
         for (const { effect_type, target, value } of effect.filter(({ target }) => toObjectUser.hasOwnProperty(target))) {
@@ -104,13 +104,25 @@ export class UserService {
 
             switch (effect_type) {
                 case 'inc':
-                    isNums && (user[target] -= value);
+                    if (isNums) {
+                        if (target === 'request_limit') { 
+                            user.request_limit -= value;
+                            user.request_count = Math.min(user.request_count, user.request_limit);
+                        } else {
+                            user[target] -= value;
+                        }
+                    }
                     break;
                 case 'dec':
                     isNums && (user[target] += value);
                     break;
                 case 'reset':
-                    user[target] = target === 'request_count' ? user.request_limit : 0;
+                    if (target === 'request_count') {
+                        user.request_count = user.request_limit;
+                        user.first_request_at = refundedAt;
+                    } else {
+                        user[target] = 0;
+                    }
                     break;
             }
         }

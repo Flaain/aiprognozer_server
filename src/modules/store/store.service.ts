@@ -17,6 +17,7 @@ import { InjectConnection } from '@nestjs/mongoose';
 import { UserService } from '../user/user.service';
 import { Product } from '../product/schema/product.schema';
 import { ConfigService } from '@nestjs/config';
+import { SOCKET_EVENTS } from '../gateway/constants';
 
 @Injectable()
 export class StoreService {
@@ -38,21 +39,21 @@ export class StoreService {
 
         return { 
             products: [
-                ...products.map((product) => product.price ? product : { ...product, price: this.calculateDynamicProductPrice(product, user) }), 
+                ...products.map((product) => product.price ? product : { ...product, price: this.calculateDynamicProductPrice(product.slug, user) }), 
                 currentLadder
             ] 
         };
     };
 
-    private calculateDynamicProductPrice = (product: ProductDocument | Product, user: UserDocument) => {
-        switch(product.slug) {
+    private calculateDynamicProductPrice = (slug: string, user: UserDocument) => {
+        switch(slug) {
             case 'daily_requests_reset':
                 const raw = user.request_limit / 0.02;
                 // const commission = (raw * 30) / 100;
 
                 return Math.round(raw)
             default:
-                throw new BadRequestException(`Cannot calculate dynamic price. Unknown product slug: ${product.slug}`);
+                throw new BadRequestException(`Cannot calculate dynamic price. Unknown product slug: ${slug}`);
         }
     }
 
@@ -68,7 +69,7 @@ export class StoreService {
             '',
             'XTR',
             [{ 
-                amount: this.configService.getOrThrow('NODE_ENV') === 'development' ? 1 : product.price ?? this.calculateDynamicProductPrice(product, user), 
+                amount: this.configService.getOrThrow('NODE_ENV') === 'development' ? 1 : product.price ?? this.calculateDynamicProductPrice(product.slug, user), 
                 label: product.name
             }],
         );
@@ -101,7 +102,7 @@ export class StoreService {
                     productPrice: product.price 
                 } 
             },
-            { upsert: true }
+            { new: true, upsert: true }
         );
 
         if (payment?.status === PAYMENT_STATUS.PAID) {
@@ -157,7 +158,8 @@ export class StoreService {
                     productName: product.name,
                     productPrice: product.price
                 }
-            }
+            },
+            { new: true, upsert: true }
         )
 
         if (payment.status === PAYMENT_STATUS.PAID) {
@@ -222,7 +224,16 @@ export class StoreService {
             const { nextProduct, ...restProduct } = product;
 
             this.gatewayService.sockets.get(payload.userId)?.forEach((socket) => {
-                socket.emit(STORE_EVENTS.PRODUCT_BUY, { ...restProduct, payedAt }, nextProduct);
+                socket.emit(STORE_EVENTS.PRODUCT_BUY, {
+                    buyedProduct: { ...restProduct, payedAt },
+                    nextProduct,
+                    ...(restProduct.slug.startsWith('plus') && {
+                        recalculatedPrices: {
+                            daily_requests_reset: this.calculateDynamicProductPrice('daily_requests_reset', user),
+                        },
+                    }),
+                });
+                socket.emit(SOCKET_EVENTS.PRODUCT_BUY, restProduct.effect);
             });
 
             this.tgProvider.bot.api
@@ -267,7 +278,7 @@ export class StoreService {
                 { session },
             );
 
-            await this.userService.removeProductEffect(user, product.effect, session);
+            await this.userService.removeProductEffect(user, product.effect, refundedAt, session);
 
             this.tgProvider.bot.api
                 .sendMessage(
@@ -275,7 +286,7 @@ export class StoreService {
                     `<b>Уведомление о возврате средств</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы зафиксировали возврат платежа за <b>"${product.name}"</b>.\n\n<b>Детали операции:</b>\n\nID платежа — <code>${ctx.message.refunded_payment.telegram_payment_charge_id}</code>\nСумма возврата — ${ctx.message.refunded_payment.total_amount}\n\nВ связи с возвратом все эффекты приобретённого продукта были отключены и удалены из вашего аккаунта.\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#возврат`,
                     {
                         parse_mode: 'HTML',
-                        message_effect_id: MESSAGE_EFFECT_ID.CONFETTI,
+                        message_effect_id: MESSAGE_EFFECT_ID.DISLIKE,
                     },
                 )
                 .catch((error) => this.logger.error(error));

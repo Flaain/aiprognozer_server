@@ -13,7 +13,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     catch(exception: unknown, host: ArgumentsHost) {
-        const { message, statusCode, errorCode } = this.getExceptionInfo(exception);
+        const { message, statusCode, errorCode, first_request_at } = this.getExceptionInfo(exception);
 
         const ctx = host.switchToHttp();
         const request = ctx.getRequest<Request>();
@@ -26,6 +26,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             timestamp: new Date().toISOString(),
             path: request.url,
             method: request.method,
+            first_request_at,
             code: errorCode,
         });
     }
@@ -57,6 +58,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message: string;
         statusCode: number;
         errorCode?: AppExceptionCode;
+        first_request_at?: Date;
     } {
         if (exception instanceof HttpException) {
             return {
@@ -69,6 +71,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             return {
                 message: exception.message,
                 statusCode: exception.getStatusCode(),
+                first_request_at: exception.first_request_at,
                 errorCode: exception.getErrorCode(),
             };
         }

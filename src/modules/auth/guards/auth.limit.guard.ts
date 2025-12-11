@@ -13,7 +13,11 @@ export class LimitGuard implements CanActivate {
         if (user.first_request_at && +new Date(user.first_request_at) + ms('24h') > Date.now()) {
             if (user.request_count >= user.request_limit) {
                 throw new AppException(
-                    { message: 'Limit exceeded', errorCode: 'REQUEST_LIMIT_EXCEEDED' },
+                    {
+                        message: 'Limit exceeded',
+                        errorCode: 'REQUEST_LIMIT_EXCEEDED',
+                        first_request_at: user.first_request_at,
+                    },
                     HttpStatus.TOO_MANY_REQUESTS,
                 );
             } else {

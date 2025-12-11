@@ -7,7 +7,6 @@ import { UserRepository } from '../user/user.repository';
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
 import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
-import { DashboardService } from '../dashboard/dashboard.service';
 import { TgProvider } from './types';
 
 @Injectable()
@@ -19,7 +18,6 @@ export class TgService {
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
-        private readonly dashboardService: DashboardService,
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
 
@@ -70,6 +68,8 @@ export class TgService {
     };
 
     private handleRefund = async (conversation: Conversation, ctx: CommandContext<ConversationFlavor<Context>>) => {
+        if (!(this.configService.getOrThrow<string>('NODE_ENV') === 'development')) return;
+
         try {
             ctx.reply('Отправьте telegram_payment_charge_id');
 
@@ -85,6 +85,10 @@ export class TgService {
         }
     }
 
+    private onHelpCommand = (ctx: CommandContext<Context>) => {
+        ctx.reply('Если у вас возникли вопросы, замечания или требуется техническая поддержка — обращайтесь по любым вопросам к @support');
+    };
+
     private init = async () => {
         try {
             this.tgProvider.bot.catch(this.handleCatch.bind(this));
@@ -98,9 +102,11 @@ export class TgService {
             
             this.tgProvider.bot.command('link', this.getLink.bind(this));
             this.tgProvider.bot.command('start', this.onStart.bind(this));
-            this.tgProvider.bot.command('refund', async (ctx: CommandContext<ConversationFlavor<Context>>) => {
-                await ctx.conversation.enter('refund-conversation');
-            });
+            this.tgProvider.bot.command('help', this.onHelpCommand.bind(this));
+
+            if (this.configService.getOrThrow<string>('NODE_ENV') === 'development') {
+                this.tgProvider.bot.command('refund', this.handleRefund.bind(this));
+            }
 
             this.tgProvider.bot.start({ onStart: (botInfo) => this.tgProvider.notify(botInfo) });
             

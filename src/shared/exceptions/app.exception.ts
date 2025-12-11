@@ -4,14 +4,16 @@ export type AppExceptionCode = 'REFERALL_NOT_EXISTS' | 'REFERALL_ALREADY_TAKEN' 
 
 export class AppException extends Error {
     private readonly errorCode?: AppExceptionCode;
+    public readonly first_request_at?: Date;
 
     constructor(
-        error: { message: string; errorCode?: AppExceptionCode },
+        error: { message: string; errorCode?: AppExceptionCode; first_request_at?: Date },
         private readonly statusCode: HttpStatus,
     ) {
         super(error.message);
 
         this.errorCode = error.errorCode;
+        this.first_request_at = error.first_request_at;
     }
 
     getStatusCode() {
