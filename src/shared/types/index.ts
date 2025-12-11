@@ -1,6 +1,9 @@
 import { UserDocument, WebAppUser } from 'src/modules/user/types/types';
+import { Socket } from 'socket.io';
 
-export type InitDataInRequest = Pick<WebAppInitData, 'user' | 'hash' | 'auth_date' | 'query_id'> & { data_check_string: string };
+export type InitDataInRequest = Pick<WebAppInitData, 'user' | 'hash' | 'auth_date' | 'query_id'> & {
+    data_check_string: string;
+};
 
 export interface WebAppChat {
     id: number;
@@ -30,4 +33,11 @@ export interface RequestWithInitData extends Request {
 
 export interface RequestWithInitDataAndUser extends RequestWithInitData {
     user: UserDocument;
+}
+
+export interface SocketWithInitDataAndUser extends Socket {
+    data: {
+        user: UserDocument;
+        init_data: InitDataInRequest;
+    }
 }

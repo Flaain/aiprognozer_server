@@ -1,0 +1,1 @@
+export type GetInvoiceOrPreCheckoutQueryMode = 'invoice' | 'pre_checkout_query';

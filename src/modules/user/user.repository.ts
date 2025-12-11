@@ -1,29 +1,38 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema';
-import { Model, QueryOptions, RootFilterQuery, UpdateQuery } from 'mongoose';
-import { ms } from 'src/shared/utils/ms';
+import { ClientSession, Model, ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
+import { Referalls } from './schemas/referall.schema';
+import { UserDocument } from './types/types';
 
 @Injectable()
 export class UserRepository {
-    constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
+    constructor(
+        @InjectModel(User.name) private readonly userModel: Model<User>,
+        @InjectModel(Referalls.name) private readonly referallsModel: Model<Referalls>,
+    ) {}
 
-    findUserByTelegramId = (id: number) => this.model.findOne({ telegram_id: id }, { last_request_at: 0, telegram_id: 0 });
+    findUserByTelegramId = (id: number) => this.userModel.findOne({ telegram_id: id });
 
-    findOrCreateUserByTelegramId = (telegram_id: number) => this.model.findOneAndUpdate(
+    findOrCreateUserByTelegramId = (telegram_id: number) => this.userModel.findOneAndUpdate<UserDocument>(
         { telegram_id },
-        { $setOnInsert: { last_request_at: new Date(), request_count: 10 } },
+        { $setOnInsert: { request_count: 0 } },
         { new: true, upsert: true, includeResultMetadata: true },
     );
 
-    createUser = (telegram_id: number) => this.model.create({ telegram_id });
+    findById = (id: string | Types.ObjectId, projection?: ProjectionType<User>, options?: QueryOptions<User>) => this.userModel.findById(id, projection, options);
 
-    findOneAndUpdate = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.model.findOneAndUpdate(filter, update, options)
+    createUser = (telegram_id: number) => this.userModel.create({ telegram_id });
 
-    resetRequestCount = () => this.model.updateMany(
-        { request_count: { $eq: 0 }, last_request_at: { $lt: new Date(+new Date() - ms('24h')) } },
-        { $set: { request_count: 10 } }
-    )
+    createReferall = (onewin_id: number) => this.referallsModel.create({ onewin_id });
 
-    exists = (filter: RootFilterQuery<User>) => this.model.exists(filter)
+    findOneAndUpdateUser = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.userModel.findOneAndUpdate(filter, update, options);
+
+    userExists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
+
+    referallExists = (filter: RootFilterQuery<Referalls>) => this.referallsModel.exists(filter);
+
+    findReferall = (onewin_id: number, session?: ClientSession) => this.referallsModel.findOne({ onewin_id }, { user_id: 1 }, { session });
+
+    exists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 }

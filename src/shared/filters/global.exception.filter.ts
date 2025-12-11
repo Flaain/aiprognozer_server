@@ -1,6 +1,7 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { Request, Response } from "express";
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Request, Response } from 'express';
+import { AppException, AppExceptionCode } from '../exceptions/app.exception';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -12,22 +13,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     catch(exception: unknown, host: ArgumentsHost) {
-        const { message, statusCode } = this.getExceptionInfo(exception);
+        const { message, statusCode, errorCode, first_request_at } = this.getExceptionInfo(exception);
 
         const ctx = host.switchToHttp();
         const request = ctx.getRequest<Request>();
 
         this.logError({ request, exception, statusCode });
 
-        ctx.getResponse<Response>()
-            .status(statusCode)
-            .json({
-                message,
-                statusCode,
-                timestamp: new Date().toISOString(),
-                path: request.url,
-                method: request.method,
-            });
+        ctx.getResponse<Response>().status(statusCode).json({
+            message,
+            statusCode,
+            timestamp: new Date().toISOString(),
+            path: request.url,
+            method: request.method,
+            first_request_at,
+            code: errorCode,
+        });
     }
 
     private logError({ exception, request, statusCode }: { request: Request; exception: unknown; statusCode: number }) {
@@ -47,21 +48,31 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         );
 
         if (statusCode >= 500) {
-            this.logger.error(
-                `Server Error: ${method} ${url}`,
-                exception instanceof Error ? exception.stack : exception,
-                str,
-            );
+            this.logger.error(`Server Error: ${method} ${url}`, exception instanceof Error ? exception.stack : exception, str);
         } else if (statusCode >= 400) {
             this.logger.warn(`Client Error: ${method} ${url} - ${statusCode}`, str);
         }
     }
 
-    private getExceptionInfo(exception: unknown): { message: string; statusCode: number } {
+    private getExceptionInfo(exception: unknown): {
+        message: string;
+        statusCode: number;
+        errorCode?: AppExceptionCode;
+        first_request_at?: Date;
+    } {
         if (exception instanceof HttpException) {
             return {
                 message: exception.message,
                 statusCode: exception.getStatus(),
+            };
+        }
+
+        if (exception instanceof AppException) {
+            return {
+                message: exception.message,
+                statusCode: exception.getStatusCode(),
+                first_request_at: exception.first_request_at,
+                errorCode: exception.getErrorCode(),
             };
         }
 

@@ -9,5 +9,6 @@ import { UserModule } from '../user/user.module';
     imports: [UserModule],
     controllers: [AuthController],
     providers: [AuthService, { useClass: InitGuard, provide: APP_GUARD }],
+    exports: [AuthService],
 })
 export class AuthModule {}

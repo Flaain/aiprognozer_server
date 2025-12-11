@@ -2,7 +2,8 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { CORS } from './shared/constants';
+import { CORS, PROVIDERS } from './shared/constants';
+import { TgProvider } from './modules/tg/types';
 
 (async () => {
     try {
@@ -17,8 +18,9 @@ import { CORS } from './shared/constants';
             try {
                 console.log(`🛑 Received ${signal}, starting graceful shutdown...`);
 
+                await app.get<TgProvider>(PROVIDERS.TG_PROVIDER).bot.stop();
                 await app.close();
-
+                
                 console.log('✅ Application closed gracefully');
 
                 process.exit(0);

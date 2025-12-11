@@ -1,11 +1,16 @@
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { USER_ROLES } from '../constants';
 
 export interface IUser {
     telegram_id: number;
-    last_request_at: Date;
+    first_request_at?: Date;
     request_count: number;
+    request_limit: number;
+    isBanned: boolean;
+    isUnlimited: boolean;
+    isVerified: boolean;
+    referall?: string | Types.ObjectId;
 }
 
 export interface WebAppUser {
@@ -23,3 +28,4 @@ export interface WebAppUser {
 
 export type UserDocument = HydratedDocument<User>;
 export type UserRoles = typeof USER_ROLES[keyof typeof USER_ROLES];
+export type PostbackType = 'PROMO' | 'LINK'
