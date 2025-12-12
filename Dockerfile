@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package.json npm-shrinkwrap.json ./
 
-RUN npm install
+RUN npm ci
 
 FROM base as build
 
@@ -18,7 +18,7 @@ WORKDIR /app
 
 COPY --from=build /app/package.json /app/npm-shrinkwrap.json ./
 
-RUN npm install --production && npm cache clean --force
+RUN npm ci --only=production && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 

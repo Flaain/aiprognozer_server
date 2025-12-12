@@ -12,6 +12,7 @@ import { TgProvider } from './modules/tg/types';
         const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: CORS });
 
         app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false }));
+        
         app.enableShutdownHooks();
         
         app.setGlobalPrefix('api');
