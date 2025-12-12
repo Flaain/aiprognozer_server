@@ -4,6 +4,6 @@
     "sourceRoot": "src",
     "compilerOptions": {
         "deleteOutDir": true,
-        "assets": ["variants.json", "link.txt"]
+        "assets": ["variants.json"]
     }
 }
