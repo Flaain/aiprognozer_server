@@ -22,6 +22,8 @@ RUN npm install --production && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 
+RUN chown -R node:node /app
+
 USER node
 
 COPY --from=build /app/dist ./dist

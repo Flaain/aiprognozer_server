@@ -71,7 +71,7 @@ export class DashboardService {
 
         for (let i = 0; i < 3; i += 1) {
             try {
-                await writeFile(join(__dirname, '..', '..', 'link.txt'), internal_ctx.link);
+                await writeFile(join(__dirname, '..', '..', 'link.txt'), internal_ctx.link, { mode: 777 });
 
                 internal_ctx.isSuccess = true;
 
