@@ -8,7 +8,7 @@ export class LimitGuard implements CanActivate {
     async canActivate(context: ExecutionContext) {
         const { user } = context.switchToHttp().getRequest<RequestWithInitDataAndUser>();
 
-        if (user.isUnlimited) return true;
+        if (user.isUnlimited || user.role === 'ADMIN') return true;
 
         if (user.first_request_at && +new Date(user.first_request_at) + ms('24h') > Date.now()) {
             if (user.request_count >= user.request_limit) {
