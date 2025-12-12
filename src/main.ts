@@ -13,6 +13,8 @@ import { TgProvider } from './modules/tg/types';
 
         app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false }));
         app.enableShutdownHooks();
+        
+        app.setGlobalPrefix('api');
 
         const gracefulShutdown = async (signal: Extract<NodeJS.Signals, 'SIGTERM' | 'SIGINT'>) => {
             try {
