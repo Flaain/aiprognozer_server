@@ -5,7 +5,7 @@ import { SocketWithInitDataAndUser } from 'src/shared/types';
 import { Server } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 
-@WebSocketGateway({ cors: CORS })
+@WebSocketGateway({ cors: CORS, path: '/api/gateway' })
 export class GatewayService implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     constructor(private readonly authService: AuthService) {}
 
