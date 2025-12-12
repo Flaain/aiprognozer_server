@@ -8,6 +8,7 @@ import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
 import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
 import { TgProvider } from './types';
+import { join } from 'node:path';
 
 @Injectable()
 export class TgService {
@@ -27,7 +28,7 @@ export class TgService {
     private onStart = async (ctx: CommandContext<Context>) => {
         if (!ctx.from) return;
 
-        const link = await readFile('./link.txt', 'utf-8');
+        const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
         const { lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
 
         ctx.reply(
