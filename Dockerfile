@@ -18,7 +18,7 @@ WORKDIR /app
 
 COPY --from=build /app/package.json /app/npm-shrinkwrap.json ./
 
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --only=production --legacy-peer-deps && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 
