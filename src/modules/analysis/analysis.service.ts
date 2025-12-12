@@ -11,13 +11,14 @@ import {
 } from './constants';
 import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
 import { TgProvider } from '../tg/types';
+import { join } from 'node:path';
 
 @Injectable()
 export class AnalysisService {
     constructor(@Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider) {}
 
     analysis = async (user: UserDocument, type: SportType, _: Express.Multer.File) => {
-        const variants = JSON.parse(await readFile('./variants.json', 'utf-8'));
+        const variants = JSON.parse(await readFile(join(__dirname, '..', '..', 'variants.json'), 'utf-8'));
 
         const indexes = new Set<number>();
         const alternativeProbability = new Set<number>();
