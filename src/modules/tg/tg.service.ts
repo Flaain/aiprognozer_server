@@ -63,7 +63,7 @@ export class TgService {
     };
 
     private getLink = async (ctx: CommandContext<ConversationFlavor<Context>>) => {
-        const link = await readFile('./link.txt', 'utf-8');
+        const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
 
         ctx.reply(`Актуальная ссылка для регистрации - ${link.toString()}`);
     };
