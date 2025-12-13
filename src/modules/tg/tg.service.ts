@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
-import { bot_commands } from './constants';
+import { cmd } from './constants';
 import { WebAppUser } from '../user/types/types';
 import { UserRepository } from '../user/user.repository';
 import { PROVIDERS } from 'src/shared/constants';
@@ -94,7 +94,7 @@ export class TgService {
         try {
             this.tgProvider.bot.catch(this.handleCatch.bind(this));
 
-            await this.tgProvider.bot.api.setMyCommands(bot_commands);
+            await this.tgProvider.bot.api.setMyCommands(cmd);
             
             // this.tgProvider.bot.use(limit({ limit: 1, timeFrame: 500 }));
             
