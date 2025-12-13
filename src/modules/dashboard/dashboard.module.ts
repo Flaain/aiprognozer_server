@@ -17,9 +17,9 @@ export class DashboardModule implements OnModuleInit {
     ) {}
 
     private onTgBotInit() {
-        this.tgProvider.bot.use(createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), 'dashboard/link'));
-        
         this.tgProvider.bot.command('dashboard', this.dashboardService.hasAccess.bind(this.dashboardService), this.dashboardService.onDashboard.bind(this.dashboardService));
+        
+        this.tgProvider.bot.use(createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), 'dashboard/link'));
 
         this.tgProvider.bot.callbackQuery('dashboard', this.dashboardService.hasAccess.bind(this.dashboardService), this.dashboardService.buildWelcomeScreen.bind(this.dashboardService));
         this.tgProvider.bot.callbackQuery('dashboard/hide', this.dashboardService.hasAccess.bind(this.dashboardService), this.dashboardService.onDashboardHide.bind(this.dashboardService));
