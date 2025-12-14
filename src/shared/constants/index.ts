@@ -6,7 +6,7 @@ import { isValidObjectId } from 'mongoose';
 dotenv.config();
 
 export const CORS: CorsOptions = {
-    origin: true,
+    origin: process.env.CLIENT_URL.split(' '),
 };
 
 export const paramPipe: PipeTransform = {
