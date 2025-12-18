@@ -87,7 +87,7 @@ export class TgService {
     }
 
     private onHelpCommand = (ctx: CommandContext<Context>) => {
-        ctx.reply('Если у вас возникли вопросы, замечания или требуется техническая поддержка — обращайтесь по любым вопросам к @support');
+        ctx.reply('Если у вас возникли вопросы, замечания или требуется техническая поддержка — обращайтесь по любым вопросам к @aiprognozer_support');
     };
 
     private init = async () => {
