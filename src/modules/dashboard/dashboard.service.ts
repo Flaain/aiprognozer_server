@@ -5,6 +5,7 @@ import { USER_ROLES } from '../user/constants';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { URL } from 'node:url';
 
 @Injectable()
 export class DashboardService {
@@ -61,7 +62,7 @@ export class DashboardService {
         do {
             const { message } = await conversation.waitFor('message:text', { next: true });
 
-            if (/^https?:\/\/1[^\s\/?#]+(?:\/[^\s?#]*)?(?:\?p=aiprognoz)?$/.test(message.text)) {
+            if (this.validateLink(message.text)) {
                 internal_ctx.link = message.text;
                 internal_ctx.isCorrect = true;
             } else {
@@ -85,6 +86,29 @@ export class DashboardService {
 
         return;
     };
+
+    private validateLink = (link: string) => {
+        try {
+            const url = new URL(link);
+
+            if (!/^https?:/.test(url.protocol) || !url.hostname.startsWith('1')) return false;
+    
+            const allowedQueryParams = {
+                open: ['register'],
+                p: ['aiprognoz']
+            };
+    
+            for (const [key, value] of Array.from(url.searchParams.entries())) {
+                if (!allowedQueryParams[key] || !allowedQueryParams[key].includes(value)) return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Error validating link: ${error}`);
+
+            return false;
+        }
+    }
 
     public async onDashboardHide(ctx: CallbackQueryContext<Context>) {
         await ctx.api.deleteMessage(ctx.chatId, ctx.callbackQuery.message.message_id);
