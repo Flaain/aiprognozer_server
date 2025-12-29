@@ -317,9 +317,9 @@ export class StoreService {
                 this.productService.getProductById(productId),
             ])
 
-            // if (ctx.preCheckoutQuery.total_amount !== (product.price ?? this.calculateDynamicProductPrice(product, user))) {
-            //     throw new BadRequestException('Canoot proceed payment. Product price has changed, please create a new invoice.');
-            // }
+            if (ctx.preCheckoutQuery.total_amount !== (product.price ?? this.calculateDynamicProductPrice(product.slug, user))) {
+                throw new BadRequestException('Canoot proceed payment. Product price has changed, please create a new invoice.');
+            }
 
             await this.isPreviousProductPayed(user, product);
             

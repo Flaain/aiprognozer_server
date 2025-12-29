@@ -1,6 +1,6 @@
 import { ConflictException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRepository } from './user.repository';
-import { PostbackType, UserDocument } from './types/types';
+import { PostbackType, ToObjectUser, UserDocument, WebAppUser } from './types/types';
 import { ClientSession, Connection, ProjectionType, QueryOptions, RootFilterQuery, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
@@ -9,17 +9,26 @@ import { AppException } from 'src/shared/exceptions/app.exception';
 import { TgProvider } from '../tg/types';
 import { User } from './schemas/user.schema';
 import { ProductEffect } from '../product/types';
+import { ReferallsService } from '../referalls/referalls.service';
+import { DEFAULT_REQUEST_LIMIT_REFERALL_REWARD, PREMIUM_REQUEST_LIMIT_REFERALL_REWARD } from '../referalls/constants';
+import { escapeMD } from 'src/shared/utils/escapeMD';
+import { ms } from 'src/shared/utils/ms';
+import { getReferallsPipeLine } from './utils/getReferallsPipeline';
 
 @Injectable()
 export class UserService {
     private readonly logger = new Logger(UserService.name);
+    private readonly isProduction: Boolean;
 
     constructor(
         @InjectConnection() private readonly connection: Connection,
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
-    ) {}
+        private readonly referallsService: ReferallsService,
+    ) {
+        this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
+    }
 
     public verify = async (user: UserDocument, onewin_id: number) => {
         if (user.isVerified) throw new AppException({ message: 'User already verified', errorCode: 'ALREADY_VERIFIED' }, HttpStatus.BAD_REQUEST);
@@ -29,18 +38,47 @@ export class UserService {
         session.startTransaction();
 
         try {
-            const referall = await this.userRepository.findReferall(onewin_id, session);
+            const onewinReferall = await this.userRepository.findOneWinReferall(onewin_id, session);
 
-            if (!referall) throw new AppException({ message: 'Referall not found', errorCode: 'REFERALL_NOT_EXISTS' }, HttpStatus.NOT_FOUND);
-            if (referall.user_id) throw new AppException({ message: 'Referall already verified', errorCode: 'REFERALL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
+            if (!onewinReferall) throw new AppException({ message: 'Referall not found', errorCode: 'REFERALL_NOT_EXISTS' }, HttpStatus.NOT_FOUND);
+            
+            if (onewinReferall.user_id) throw new AppException({ message: 'Referall already verified', errorCode: 'REFERALL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
 
-            await user.updateOne({ isVerified: true, referall: referall._id }, { session });
-            await referall.updateOne({ user_id: user._id }, { session });
+            await this.referallsService.createUserReferralCode(user._id, session)
+            
+            await user.updateOne({ isVerified: true, onewin: onewinReferall._id }, { session });
+            await onewinReferall.updateOne({ user_id: user._id }, { session });
+
+            const invitedByRef = user.invitedBy ? await this.referallsService.findOneAndUpdateCode(
+                { _id: user.invitedBy },
+                { $inc: { total_count: 1, ...(user.isPremium && { premium_count: 1 }) } },
+                { session, returnDocument: 'after' },
+            ) : undefined;
+
+            if (invitedByRef?.user_id) {
+                const reward = user.isPremium ? PREMIUM_REQUEST_LIMIT_REFERALL_REWARD : DEFAULT_REQUEST_LIMIT_REFERALL_REWARD;
+
+                await this.userRepository.findOneAndUpdateUser(
+                    { _id: invitedByRef.user_id },
+                    { $inc: { request_limit: reward } },
+                    { session, projection: { telegram_id: 1, request_limit: 1 }, returnDocument: 'after' },
+                );
+
+                // await this.tgProvider.bot.api.sendMessage(
+                //     inviter.telegram_id,
+                //     `*У вас новый реферал!*\n\nВаш лимит запросов был увеличен на — ${reward}\nНовый лимит — ${inviter.request_limit}\n\n*Ваша статистика*:\n\n• Всего рефералов: ${invitedByRef.total_count}\n\n*Актуальная ссылка*: \`https://t.me/${this.configService.getOrThrow<string>('BOT_USERNAME')}?startapp=${invitedByRef.code}\``,
+                //     {
+                //         parse_mode: 'Markdown',
+                //     },
+                // );
+            }
 
             await session.commitTransaction();
 
             return defaultResponse;
         } catch (error) {
+            this.logger.error(error);
+
             await session.abortTransaction();
 
             throw error;
@@ -52,14 +90,14 @@ export class UserService {
     public postback = async ({ onewin_id, country, type, name }: { onewin_id: number; country: string; type: PostbackType; name: string }) => {
         if (await this.userRepository.referallExists({ onewin_id })) throw new ConflictException('Provided onewin id already exists');
 
-        await this.userRepository.createReferall(onewin_id);
+        await this.userRepository.createOneWinReferall(onewin_id);
 
         this.tgProvider.bot.api.sendMessage(
             this.configService.getOrThrow<number>('NEW_LEED_GROUP_ID'),
             `*📣 Новая регистрация!*\n\n🆔 ID: ${onewin_id}\n🌍 Страна: ${country}\n${type === 'PROMO' ? '🎟️ Промокод' : '🔗 Ссылка'}: ${name}`,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'Markdown' },
         );
-        
+
         return defaultResponse;
     };
 
@@ -69,7 +107,9 @@ export class UserService {
         if (!user) throw new NotFoundException('User not found');
 
         return user;
-    }
+    };
+
+    public findByTelegramId = async (telegram_id: number) => this.userRepository.findUserByTelegramId(telegram_id);
 
     public applyProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, session?: ClientSession) => {
         const toObjectUser = user.toObject();
@@ -94,7 +134,7 @@ export class UserService {
         }
 
         await user.save({ session });
-    }
+    };
 
     public removeProductEffect = async (user: UserDocument, effect: Array<ProductEffect>, refundedAt: Date, session?: ClientSession) => {
         const toObjectUser = user.toObject();
@@ -105,7 +145,7 @@ export class UserService {
             switch (effect_type) {
                 case 'inc':
                     if (isNums) {
-                        if (target === 'request_limit') { 
+                        if (target === 'request_limit') {
                             user.request_limit -= value;
                             user.request_count = Math.min(user.request_count, user.request_limit);
                         } else {
@@ -128,7 +168,60 @@ export class UserService {
         }
 
         await user.save({ session });
-    }
+    };
 
     public isExists = async (filter: RootFilterQuery<User>) => this.userRepository.exists(filter);
+
+    public findOrCreateUserByTelegramId = async (webAppUser: WebAppUser, ctx: 'http' | 'bot', ref?: string) => {
+        const invitedByRef = ref && ctx === 'http' ? await this.referallsService.findOne({ code: ref }, undefined) : undefined;
+
+        const { value, lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(webAppUser.id, {
+            name: webAppUser.first_name,
+            username: webAppUser.username,
+            language_code: webAppUser.language_code,
+            photo_url: webAppUser.photo_url,
+            isPremium: webAppUser.is_premium ?? false,
+            $setOnInsert: { invitedBy: invitedByRef?._id },
+        });
+
+        if (!lastErrorObject.updatedExisting) {
+            this.tgProvider.bot.api.sendMessage(
+                this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
+                `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${escapeMD(webAppUser.username) || 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
+                { parse_mode: 'Markdown', disable_notification: !this.isProduction },
+            );
+        } else {
+            if (value.first_request_at && Date.now() > +new Date(value.first_request_at) + ms('24h')) {
+                value.request_count = 0;
+                value.first_request_at = undefined;
+
+                await value.save();
+            }
+        }
+
+        const { telegram_id, __v, invitedBy, onewin, ...user } = value.toObject<ToObjectUser>();
+
+        return onewin ? { ...user, onewin_id: onewin.onewin_id } : user;
+    };
+
+    public referalls = async (userId: Types.ObjectId, cursor?: string) => {
+        const referallCode = await this.referallsService.findOne({ user_id: userId });
+
+        if (!referallCode) throw new NotFoundException('Referall code not found');
+
+        const referalls = (await this.userRepository.aggregate(getReferallsPipeLine(referallCode._id, cursor)))[0]
+
+        return cursor
+            ? referalls
+            : {
+                  rewards: {
+                      request_limit: {
+                          default: DEFAULT_REQUEST_LIMIT_REFERALL_REWARD,
+                          premium: PREMIUM_REQUEST_LIMIT_REFERALL_REWARD,
+                      },
+                  },
+                  code: referallCode.code,
+                  referalls,
+              };
+    }
 }

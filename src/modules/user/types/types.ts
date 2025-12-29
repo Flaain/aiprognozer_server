@@ -10,7 +10,13 @@ export interface IUser {
     isBanned: boolean;
     isUnlimited: boolean;
     isVerified: boolean;
-    referall?: string | Types.ObjectId;
+    invitedBy?: Types.ObjectId;
+    onewin?: string | Types.ObjectId;
+}
+
+export interface ToObjectUser extends Omit<IUser, 'onewin'> {
+    _id: Types.ObjectId;
+    onewin: { onewin_id: number }
 }
 
 export interface WebAppUser {

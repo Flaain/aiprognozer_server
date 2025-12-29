@@ -1,21 +1,17 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { WebAppUser } from '../user/types/types';
-import { UserRepository } from '../user/user.repository';
 import { InitDataInRequest } from 'src/shared/types';
-import { PROVIDERS } from 'src/shared/constants';
-import { ms } from 'src/shared/utils/ms';
-import { TgProvider } from '../tg/types';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class AuthService {
     private readonly isProduction: boolean;
 
     constructor(
-        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
-        private readonly userRepository: UserRepository,
+        private readonly userService: UserService,
     ) {
         this.isProduction = this.configService.getOrThrow<string>('NODE_ENV') === 'production';
     }
@@ -45,38 +41,13 @@ export class AuthService {
         };
     };
 
-    public login = async (init_data: InitDataInRequest) => {
-        const { value, lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(init_data.user.id);
-        
-        if (!lastErrorObject.updatedExisting) {
-            this.notifyAboutNewUser(init_data.user);
-        } else {
-            if (value.first_request_at && Date.now() > +new Date(value.first_request_at) + ms('24h')) {
-                value.request_count = 0;
-                value.first_request_at = undefined;
-                
-                await value.save();
-            }
-        }
-        
-        const { telegram_id, __v, ...user } = value.toObject();
-
-        return user;
-    };
+    public login = async (init_data: InitDataInRequest, ref?: string) => this.userService.findOrCreateUserByTelegramId(init_data.user, 'http', ref);
 
     public validate = async (telegram_id: number) => {
-        const user = await this.userRepository.findUserByTelegramId(telegram_id);
+        const user = await this.userService.findByTelegramId(telegram_id);
 
         if (!user) throw new UnauthorizedException();
 
         return user;
-    };
-
-    private notifyAboutNewUser = (user: WebAppUser) => {
-        this.tgProvider.bot.api.sendMessage(
-            this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-            `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
-            { parse_mode: 'Markdown', disable_notification: !this.isProduction },
-        );
     };
 }

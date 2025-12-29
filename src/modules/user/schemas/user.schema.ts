@@ -30,8 +30,26 @@ export class User implements IUser {
     @Prop({ type: Boolean, required: true, default: false })
     isUnlimited: boolean;
 
-    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Referalls' })
-    referall?: mongoose.Types.ObjectId;
+    @Prop({ type: String, required: true })
+    name: string;
+
+    @Prop({ type: String })
+    username?: string;
+
+    @Prop({ type: Boolean, required: true })
+    isPremium: boolean;
+
+    @Prop({ type: String, required: true })
+    language_code: string;
+
+    @Prop({ type: String })
+    photo_url?: string;
+
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'onewin_referalls' })
+    onewin?: mongoose.Types.ObjectId;
+
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'referall_codes' })
+    invitedBy?: mongoose.Types.ObjectId;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
