@@ -6,6 +6,7 @@ import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { URL } from 'node:url';
+import { ms } from 'src/shared/utils/ms';
 
 @Injectable()
 export class DashboardService {
@@ -53,14 +54,17 @@ export class DashboardService {
             ctx.chatId,
             ctx.callbackQuery.message.message_id,
             '*Отправьте новую ссылку*\n\nподдерживаются следующие форматы: \n\nhttps://1qwerty.com/\nhttps://1qwerty.com/?p=aiprognoz',
-            {
-                parse_mode: 'Markdown',
-                reply_markup: new InlineKeyboard().text('Назад', 'dashboard'),
-            },
+            { parse_mode: 'Markdown' },
         );
 
         do {
-            const { message } = await conversation.waitFor('message:text', { next: true });
+            const { message } = await conversation.waitUnless(
+                Context.has.filterQuery('::bot_command') || Context.has.filterQuery('callback_query'),
+                {
+                    maxMilliseconds: ms('5m'),
+                    otherwise: () => conversation.halt({ next: true }),
+                },
+            );
 
             if (this.validateLink(message.text)) {
                 internal_ctx.link = message.text;
@@ -89,17 +93,20 @@ export class DashboardService {
 
     private validateLink = (link: string) => {
         try {
-            const url = new URL(link);
+            if (!link) return false;
+
+            const trimmted = link.trim();
+
+            if (!trimmted.length) return false;
+
+            const url = new URL(trimmted);
 
             if (!/^https?:/.test(url.protocol) || !url.hostname.startsWith('1')) return false;
     
-            const allowedQueryParams = {
-                open: ['register'],
-                p: ['aiprognoz']
-            };
+            const allowedQueryParams = ['p', 'open'];
     
-            for (const [key, value] of Array.from(url.searchParams.entries())) {
-                if (!allowedQueryParams[key] || !allowedQueryParams[key].includes(value)) return false;
+            for (const [key] of Array.from(url.searchParams.entries())) {
+                if (!allowedQueryParams.includes(key)) return false;
             }
 
             return true;
