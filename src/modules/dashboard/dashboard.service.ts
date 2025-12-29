@@ -58,13 +58,12 @@ export class DashboardService {
         );
 
         do {
-            const { message } = await conversation.waitUnless(
-                Context.has.filterQuery('::bot_command') || Context.has.filterQuery('callback_query'),
+            const { message } = await conversation.waitUntil((ctx) => ctx.has('message:text') && !ctx.has('::bot_command') && !ctx.has('callback_query'),
                 {
                     maxMilliseconds: ms('5m'),
-                    otherwise: () => conversation.halt({ next: true }),
+                    otherwise: () => conversation.halt({ next: true })
                 },
-            );
+            )
 
             if (this.validateLink(message.text)) {
                 internal_ctx.link = message.text;

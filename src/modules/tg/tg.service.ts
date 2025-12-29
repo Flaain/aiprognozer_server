@@ -2,13 +2,13 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
 import { cmd } from './constants';
-import { WebAppUser } from '../user/types/types';
-import { UserRepository } from '../user/user.repository';
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
 import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
 import { TgProvider } from './types';
 import { join } from 'node:path';
+import { UserService } from '../user/user.service';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 @Injectable()
 export class TgService {
@@ -18,7 +18,8 @@ export class TgService {
     constructor(
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
-        private readonly userRepository: UserRepository,
+        private readonly userService: UserService,
+        private readonly dashboardService: DashboardService
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
 
@@ -26,28 +27,23 @@ export class TgService {
     }
 
     private onStart = async (ctx: CommandContext<Context>) => {
-        if (!ctx.from) return;
-
-        const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
-        const { lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(ctx.from.id);
-
-        ctx.reply(
-            `*Добро пожаловать, ${ctx.from.first_name}!*\n\nЯ — ваш персональный ИИ-аналитик для ставок на спорт. Моя задача — помогать вам ориентироваться в мире спортивных событий. Вот что я делаю:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски, рассчитываю вероятности исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nЧтобы разблокировать доступ к моим прогнозам, зарегистрируйтесь по реферальной ссылке ниже, это обязательно и займет всего минуту! \n\n${link.toString()}\n\nГотовы? Выберите матч, и я подготовлю для вас прогноз!`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', 'https://t.me/aiprognozer_bot/app'),
-            },
-        );
-
-        !lastErrorObject?.updatedExisting && this.notifyAboutNewUser(ctx.from);
-    };
-
-    private notifyAboutNewUser = (user: WebAppUser) => {
-        this.tgProvider.bot.api.sendMessage(
-            this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-            `🚀 Новый пользователь!\n\n👤 Имя: ${user.first_name}\n📧 Username: @${user.username || 'без юзернейма'}\n🆔 ID: ${user.id}`,
-            { parse_mode: 'Markdown', disable_notification: !this.isProduction },
-        );
+        try {
+            if (!ctx.from) return;
+    
+            const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
+            
+            await this.userService.findOrCreateUserByTelegramId(ctx.from, 'bot');
+    
+            ctx.reply(
+                `*Добро пожаловать, ${ctx.from.first_name}!*\n\nЯ — ваш персональный ИИ-аналитик для ставок на спорт. Моя задача — помогать вам ориентироваться в мире спортивных событий. Вот что я делаю:\n\n1. Анализирую статистику и актуальные данные.\n2. Оцениваю риски, рассчитываю вероятности исходов.\n3. Формирую краткие прогнозы, которые могут быть полезны при выборе ставки.\n\nЧтобы разблокировать доступ к моим прогнозам, зарегистрируйтесь по реферальной ссылке ниже, это обязательно и займет всего минуту! \n\n${link.toString()}\n\nГотовы? Выберите матч, и я подготовлю для вас прогноз!`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: new InlineKeyboard().url('🚀 Получить прогноз', `https://t.me/${this.configService.getOrThrow<string>('BOT_USERNAME')}/app`),
+                },
+            );
+        } catch (error) {
+            this.logger.error(error);
+        }
     };
 
     private handleCatch = (error: BotError<Context>) => {
@@ -69,7 +65,7 @@ export class TgService {
     };
 
     private handleRefund = async (conversation: Conversation, ctx: CommandContext<ConversationFlavor<Context>>) => {
-        if (!(this.configService.getOrThrow<string>('NODE_ENV') === 'development')) return;
+        if (this.isProduction) return;
 
         try {
             ctx.reply('Отправьте telegram_payment_charge_id');
@@ -86,6 +82,15 @@ export class TgService {
         }
     }
 
+    private handleCtx = (ctx: CommandContext<Context>) => {
+        ctx.reply(
+            `<pre><code class="language-json">${JSON.stringify(ctx.chat, null, 2)}</code></pre>`,
+            {
+                parse_mode: 'HTML',
+            },
+        );
+    }
+
     private onHelpCommand = (ctx: CommandContext<Context>) => {
         ctx.reply('Если у вас возникли вопросы, замечания или требуется техническая поддержка — обращайтесь по любым вопросам к @aiprognozer_support');
     };
@@ -100,13 +105,20 @@ export class TgService {
             
             this.tgProvider.bot.use(conversations());
             this.tgProvider.bot.use(createConversation(this.handleRefund, 'refund-conversation'));
-            
+            this.tgProvider.bot.use(
+                createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), {
+                    id: 'dashboard/link',
+                    maxMillisecondsToWait: 60 * 1000 * 5,
+                }),
+            );
+
             this.tgProvider.bot.command('link', this.getLink.bind(this));
             this.tgProvider.bot.command('start', this.onStart.bind(this));
             this.tgProvider.bot.command('help', this.onHelpCommand.bind(this));
 
-            if (this.configService.getOrThrow<string>('NODE_ENV') === 'development') {
+            if (!this.isProduction) {
                 this.tgProvider.bot.command('refund', this.handleRefund.bind(this));
+                this.tgProvider.bot.command('context', this.handleCtx.bind(this));
             }
 
             this.tgProvider.bot.start({ onStart: (botInfo) => this.tgProvider.notify(botInfo) });
