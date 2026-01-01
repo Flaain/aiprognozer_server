@@ -187,7 +187,7 @@ export class UserService {
         if (!lastErrorObject.updatedExisting) {
             this.tgProvider.bot.api.sendMessage(
                 this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-                `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${escapeMD(webAppUser.username) || 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
+                `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${webAppUser.username ? escapeMD(webAppUser.username) : 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
                 { parse_mode: 'Markdown', disable_notification: !this.isProduction },
             );
         } else {
