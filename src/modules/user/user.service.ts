@@ -1,6 +1,6 @@
 import { ConflictException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRepository } from './user.repository';
-import { PostbackType, ToObjectUser, UserDocument, WebAppUser } from './types/types';
+import { PostbackType, UserDocument, WebAppUser } from './types/types';
 import { ClientSession, Connection, ProjectionType, QueryOptions, RootFilterQuery, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
@@ -11,9 +11,9 @@ import { User } from './schemas/user.schema';
 import { ProductEffect } from '../product/types';
 import { ReferallsService } from '../referalls/referalls.service';
 import { DEFAULT_REQUEST_LIMIT_REFERALL_REWARD, PREMIUM_REQUEST_LIMIT_REFERALL_REWARD } from '../referalls/constants';
-import { escapeMD } from 'src/shared/utils/escapeMD';
 import { ms } from 'src/shared/utils/ms';
-import { getReferallsPipeLine } from './utils/getReferallsPipeline';
+import { REFERALLS_BATCH } from './constants';
+import { escapeMD } from 'src/shared/utils/escapeMD';
 
 @Injectable()
 export class UserService {
@@ -44,15 +44,15 @@ export class UserService {
             
             if (onewinReferall.user_id) throw new AppException({ message: 'Referall already verified', errorCode: 'REFERALL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
 
-            await this.referallsService.createUserReferralCode(user._id, session)
+            await this.referallsService.createUserReferralCode(user._id, session);
             
             await user.updateOne({ isVerified: true, onewin: onewinReferall._id }, { session });
             await onewinReferall.updateOne({ user_id: user._id }, { session });
 
             const invitedByRef = user.invitedBy ? await this.referallsService.findOneAndUpdateCode(
                 { _id: user.invitedBy },
-                { $inc: { total_count: 1, ...(user.isPremium && { premium_count: 1 }) } },
-                { session, returnDocument: 'after' },
+                { $inc: { total_verified: 1 } },
+                { session, new: true },
             ) : undefined;
 
             if (invitedByRef?.user_id) {
@@ -61,16 +61,8 @@ export class UserService {
                 await this.userRepository.findOneAndUpdateUser(
                     { _id: invitedByRef.user_id },
                     { $inc: { request_limit: reward } },
-                    { session, projection: { telegram_id: 1, request_limit: 1 }, returnDocument: 'after' },
+                    { session },
                 );
-
-                // await this.tgProvider.bot.api.sendMessage(
-                //     inviter.telegram_id,
-                //     `*У вас новый реферал!*\n\nВаш лимит запросов был увеличен на — ${reward}\nНовый лимит — ${inviter.request_limit}\n\n*Ваша статистика*:\n\n• Всего рефералов: ${invitedByRef.total_count}\n\n*Актуальная ссылка*: \`https://t.me/${this.configService.getOrThrow<string>('BOT_USERNAME')}?startapp=${invitedByRef.code}\``,
-                //     {
-                //         parse_mode: 'Markdown',
-                //     },
-                // );
             }
 
             await session.commitTransaction();
@@ -173,35 +165,74 @@ export class UserService {
     public isExists = async (filter: RootFilterQuery<User>) => this.userRepository.exists(filter);
 
     public findOrCreateUserByTelegramId = async (webAppUser: WebAppUser, ctx: 'http' | 'bot', ref?: string) => {
-        const invitedByRef = ref && ctx === 'http' ? await this.referallsService.findOne({ code: ref }, undefined) : undefined;
+        let user = null;
 
-        const { value, lastErrorObject } = await this.userRepository.findOrCreateUserByTelegramId(webAppUser.id, {
+        const userFields = {
             name: webAppUser.first_name,
             username: webAppUser.username,
             language_code: webAppUser.language_code,
             photo_url: webAppUser.photo_url,
             isPremium: webAppUser.is_premium ?? false,
-            $setOnInsert: { invitedBy: invitedByRef?._id },
-        });
+        };
 
-        if (!lastErrorObject.updatedExisting) {
+        user = await this.userRepository.findOneAndUpdateUser(
+            { telegram_id: webAppUser.id }, 
+            userFields, 
+            { 
+                projection: { onewin: 0, invitedBy: 0, telegram_id: 0 }, 
+                new: true 
+            }
+        );
+
+        if (!user) {
+            if (ref && ctx === 'http') {
+                const session = await this.connection.startSession();
+
+                session.startTransaction();
+
+                try {
+                    const invitedByRef = await this.referallsService.findOneAndUpdateCode(
+                        { code: ref }, 
+                        { $inc: { total_count: 1 } }, 
+                        { session }
+                    );
+
+                    user = (
+                        await this.userRepository.createUser(
+                            { ...userFields, telegram_id: webAppUser.id, invitedBy: invitedByRef?._id },
+                            session,
+                        )
+                    )[0];
+
+                    await session.commitTransaction();
+                } catch (error) {
+                    await session.abortTransaction();
+                    
+                    throw error;
+                } finally {
+                    session.endSession();
+                }
+            } else {
+                user = await this.userRepository.createUser({ ...userFields, telegram_id: webAppUser.id });
+            }
+
             this.tgProvider.bot.api.sendMessage(
                 this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
                 `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${webAppUser.username ? escapeMD(webAppUser.username) : 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
                 { parse_mode: 'Markdown', disable_notification: !this.isProduction },
             );
-        } else {
-            if (value.first_request_at && Date.now() > +new Date(value.first_request_at) + ms('24h')) {
-                value.request_count = 0;
-                value.first_request_at = undefined;
-
-                await value.save();
-            }
         }
 
-        const { telegram_id, __v, invitedBy, onewin, ...user } = value.toObject<ToObjectUser>();
+        if (user.first_request_at && Date.now() > +new Date(user.first_request_at) + ms('24h')) {
+            user.request_count = 0;
+            user.first_request_at = undefined;
 
-        return onewin ? { ...user, onewin_id: onewin.onewin_id } : user;
+            await user.save();
+        }
+
+        const { telegram_id, __v, onewin, invitedBy, ...rest } = user.toObject();
+
+        return rest;
     };
 
     public referalls = async (userId: Types.ObjectId, cursor?: string) => {
@@ -209,19 +240,85 @@ export class UserService {
 
         if (!referallCode) throw new NotFoundException('Referall code not found');
 
-        const referalls = (await this.userRepository.aggregate(getReferallsPipeLine(referallCode._id, cursor)))[0]
+        const referalls = (await this.userRepository.aggregate([
+            {
+                $match: {
+                    invitedBy: referallCode._id,
+                    ...(cursor && { _id: { $lt: new Types.ObjectId(cursor) } }),
+                },
+            },
+            { $sort: { createdAt: -1 } },
+            {
+                $facet: {
+                    items: [
+                        { $limit: REFERALLS_BATCH + 1 },
+                        { $project: { name: 1, isVerified: 1, createdAt: 1, telegram_id: 1 } },
+                    ],
+                },
+            },
+            {
+                $project: {
+                    items: {
+                        $slice: ['$items', REFERALLS_BATCH]
+                    },
+                    meta: {
+                        hasMore: { $gt: [{ $size: '$items' }, REFERALLS_BATCH] },
+                        perPage: { $literal: REFERALLS_BATCH },
+                        nextCursor: {
+                            $cond: {
+                                if: { $gt: [{ $size: '$items' }, REFERALLS_BATCH] },
+                                then: { $toString: { $arrayElemAt: ['$items._id', REFERALLS_BATCH - 1] } },
+                                else: null,
+                            }
+                        }
+                    }
+                }
+            }
+        ]))[0];
 
-        return cursor
-            ? referalls
-            : {
-                  rewards: {
-                      request_limit: {
-                          default: DEFAULT_REQUEST_LIMIT_REFERALL_REWARD,
-                          premium: PREMIUM_REQUEST_LIMIT_REFERALL_REWARD,
-                      },
-                  },
-                  code: referallCode.code,
-                  referalls,
-              };
+        return {
+            referalls,
+            ...(!cursor && {
+                rewards: {
+                    request_limit: {
+                        default: DEFAULT_REQUEST_LIMIT_REFERALL_REWARD,
+                        premium: PREMIUM_REQUEST_LIMIT_REFERALL_REWARD,
+                    },
+                },
+                code: referallCode.code,
+            }),
+        };
+    }
+
+    public generatePreparedMessage = async (telegram_id: number, userId: Types.ObjectId) => {
+        const ref = await this.referallsService.findOne({ user_id: userId });
+
+        if (!ref) throw new NotFoundException('Referall code not found');
+
+        const preparedMessage = await this.tgProvider.bot.api.savePreparedInlineMessage(
+            telegram_id,
+            {
+                type: 'photo',
+                id: `invite_message_${telegram_id}`,
+                title: 'Invite',
+                photo_url: this.configService.getOrThrow<string>('INVITE_IMAGE_URL'),
+                thumbnail_url: this.configService.getOrThrow<string>('INVITE_IMAGE_URL'),
+                caption: '*Искусственный интеллект для анализа спортивных событий*\n\nНашел бота, который на основе ИИ анализирует спортивные события, загружаешь событие — он выдает четкий разбор с прогнозом и рекомендованными исходами.\n\n_Хватит полагаться на удачу, пора довериться цифрам, так-как они не лгут._',
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: 'Начать анализ',
+                                url: `https://t.me/${this.configService.getOrThrow<string>('BOT_USERNAME')}?startapp=${ref.code}`,
+                            },
+                        ],
+                    ],
+                },
+            },
+            { allow_channel_chats: true, allow_user_chats: true, allow_group_chats: true },
+        );
+
+        return preparedMessage.id;
     }
 }
