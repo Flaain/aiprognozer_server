@@ -9,6 +9,8 @@ import { ReferallsRepository } from './referalls.repository';
 export class ReferallsService {
     constructor(private readonly referallCodesRepository: ReferallsRepository) {}
 
+    findById = (id: Types.ObjectId) => this.referallCodesRepository.findById(id);
+
     findOneAndUpdateCode = (
         filter?: RootFilterQuery<Referalls>,
         update?: UpdateQuery<Referalls>,
@@ -16,10 +18,10 @@ export class ReferallsService {
     ) => this.referallCodesRepository.findOneAndUpdateCode(filter, update, options);
 
     createUserReferralCode = async (userId: Types.ObjectId, session?: ClientSession) => {
-        const hash = createHash('sha256').update(userId.toString()).digest('hex').slice(0, REFERALL_CODE_LENGTH).toLowerCase();
-        
-        return this.referallCodesRepository.createUserReferralCode(userId, hash, session);
+        return this.referallCodesRepository.createUserReferralCode(userId, this.getHashCode(userId), session);
     };
+
+    getHashCode = (userId: Types.ObjectId) => createHash('sha256').update(userId.toString()).digest('hex').slice(0, REFERALL_CODE_LENGTH).toLowerCase();
 
     findOne = (
         filter?: RootFilterQuery<Referalls>,
