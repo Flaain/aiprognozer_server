@@ -37,4 +37,10 @@ export class UserController {
     referalls(@Req() { user }: RequestWithInitDataAndUser, @Query('cursor', validateReferallCursorQueryPipe) cursor?: string) {
         return this.userService.referalls(user._id, cursor);
     }
+
+    @Get(Routes.INVITE)
+    @Auth(true)
+    invite(@Req() { user }: RequestWithInitDataAndUser) {
+        return this.userService.generatePreparedMessage(user.telegram_id, user._id);
+    }
 }
