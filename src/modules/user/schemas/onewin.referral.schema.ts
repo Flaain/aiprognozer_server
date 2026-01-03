@@ -1,8 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 
-@Schema({ timestamps: true, collection: 'onewin_referalls' })
-export class OneWinReferalls {
+@Schema({ timestamps: true, collection: 'onewin_referrals' })
+export class OneWinReferrals {
     @Prop({ type: Number, required: true, unique: true, index: true })
     onewin_id: number;
 
@@ -14,4 +14,4 @@ export class OneWinReferalls {
     user_id?: mongoose.Types.ObjectId;
 }
 
-export const OneWinReferallsSchema = SchemaFactory.createForClass(OneWinReferalls);
+export const OneWinReferralsSchema = SchemaFactory.createForClass(OneWinReferrals);

@@ -4,16 +4,16 @@ import { User, UserSchema } from './schemas/user.schema';
 import { UserService } from './user.service';
 import { UserRepository } from './user.repository';
 import { UserController } from './user.controller';
-import { OneWinReferalls, OneWinReferallsSchema } from './schemas/onewin.referall.schema';
-import { ReferallsModule } from '../referalls/referalls.module';
+import { ReferralsModule } from '../referrals/referrals.module';
+import { OneWinReferrals, OneWinReferralsSchema } from './schemas/onewin.referral.schema';
 
 @Module({
     imports: [
         MongooseModule.forFeature([
             { name: User.name, schema: UserSchema },
-            { name: OneWinReferalls.name, schema: OneWinReferallsSchema },
+            { name: OneWinReferrals.name, schema: OneWinReferralsSchema },
         ]),
-        ReferallsModule
+        ReferralsModule
     ],
     providers: [UserService, UserRepository],
     controllers: [UserController],

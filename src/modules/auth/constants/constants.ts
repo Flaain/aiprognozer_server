@@ -1,5 +1,5 @@
 import { PipeTransform } from '@nestjs/common';
-import { REFERALL_CODE_LENGTH } from 'src/modules/referalls/constants';
+import { REFERRAL_CODE_LENGTH } from 'src/modules/referrals/constants';
 
 export const Routes = {
     PREFIX: 'auth',
@@ -12,7 +12,7 @@ export const refQueryPipe: PipeTransform<string, string> = {
 
         const trimmed = value.trim();
 
-        if (trimmed.length !== REFERALL_CODE_LENGTH) {
+        if (trimmed.length !== REFERRAL_CODE_LENGTH) {
             throw new Error('Invalid referral code');
         }
 

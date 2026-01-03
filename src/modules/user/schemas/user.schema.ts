@@ -45,10 +45,10 @@ export class User implements IUser {
     @Prop({ type: String })
     photo_url?: string;
 
-    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'onewin_referalls' })
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'onewin_referrals' })
     onewin?: mongoose.Types.ObjectId;
 
-    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'referall_codes' })
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Referrals' })
     invitedBy?: mongoose.Types.ObjectId;
 }
 

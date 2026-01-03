@@ -2,7 +2,7 @@ import { BadRequestException, PipeTransform } from "@nestjs/common";
 import { isValidObjectId } from "mongoose";
 
 export const DEFAULT_REQUEST_LIMIT = 5;
-export const REFERALLS_BATCH = 10;
+export const REFERRALS_BATCH = 10;
 
 export const USER_ROLES = {
     USER: 'USER',
@@ -13,7 +13,7 @@ export const Routes = {
     PREFIX: 'user',
     POSTBACK: 'postback',
     VERIFY: 'verify',
-    REFERALLS: 'referalls',
+    REFERRALS: 'referrals',
     INVITE: 'invite'
 }
 
@@ -27,13 +27,13 @@ export const verifyOneWinIdParamPipe: PipeTransform<string, number> = {
     }
 }
 
-export const validateReferallCursorQueryPipe: PipeTransform<string, string> = {
+export const validateReferralCursorQueryPipe: PipeTransform<string, string> = {
     transform: (value) => {
         if (!value) return value;
 
         const trimmed = value.trim();
 
-        if (!isValidObjectId(trimmed)) throw new BadRequestException('Invalid referall cursor');
+        if (!isValidObjectId(trimmed)) throw new BadRequestException('Invalid referral cursor');
 
         return trimmed;
     }

@@ -2,14 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema';
 import { AggregateOptions, ClientSession, Model, PipelineStage, ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
-import { OneWinReferalls } from './schemas/onewin.referall.schema';
 import { UserDocument } from './types/types';
+import { OneWinReferrals } from './schemas/onewin.referral.schema';
 
 @Injectable()
 export class UserRepository {
     constructor(
         @InjectModel(User.name) private readonly userModel: Model<User>,
-        @InjectModel(OneWinReferalls.name) private readonly onewinReferallsModel: Model<OneWinReferalls>,
+        @InjectModel(OneWinReferrals.name) private readonly onewinReferralsModel: Model<OneWinReferrals>,
     ) {}
 
     findUserByTelegramId = (id: number) => this.userModel.findOne({ telegram_id: id });
@@ -20,15 +20,15 @@ export class UserRepository {
 
     createUser = (fields: Partial<User>, session?: ClientSession) => session ? this.userModel.create([fields], { session }) : this.userModel.create(fields);
 
-    createOneWinReferall = (onewin_id: number) => this.onewinReferallsModel.create({ onewin_id });
+    createOneWinReferral = (onewin_id: number) => this.onewinReferralsModel.create({ onewin_id });
 
     findOneAndUpdateUser = (filter?: RootFilterQuery<User>, update?: UpdateQuery<User>, options?: QueryOptions<User>) => this.userModel.findOneAndUpdate<UserDocument>(filter, update, options);
 
     userExists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 
-    referallExists = (filter: RootFilterQuery<OneWinReferalls>) => this.onewinReferallsModel.exists(filter);
+    referralExists = (filter: RootFilterQuery<OneWinReferrals>) => this.onewinReferralsModel.exists(filter);
 
-    findOneWinReferall = (onewin_id: number, session?: ClientSession) => this.onewinReferallsModel.findOne({ onewin_id }, { user_id: 1 }, { session });
+    findOneWinReferral = (onewin_id: number, session?: ClientSession) => this.onewinReferralsModel.findOne({ onewin_id }, { user_id: 1 }, { session });
 
     exists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 

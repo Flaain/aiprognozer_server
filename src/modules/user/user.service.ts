@@ -9,11 +9,11 @@ import { AppException } from 'src/shared/exceptions/app.exception';
 import { TgProvider } from '../tg/types';
 import { User } from './schemas/user.schema';
 import { ProductEffect } from '../product/types';
-import { ReferallsService } from '../referalls/referalls.service';
-import { DEFAULT_REQUEST_LIMIT_REFERALL_REWARD, PREMIUM_REQUEST_LIMIT_REFERALL_REWARD } from '../referalls/constants';
 import { ms } from 'src/shared/utils/ms';
-import { REFERALLS_BATCH } from './constants';
 import { escapeMD } from 'src/shared/utils/escapeMD';
+import { ReferralsService } from '../referrals/referrals.service';
+import { DEFAULT_REQUEST_LIMIT_REFERRAL_REWARD, PREMIUM_REQUEST_LIMIT_REFERRAL_REWARD } from '../referrals/constants';
+import { REFERRALS_BATCH } from './constants';
 
 @Injectable()
 export class UserService {
@@ -25,7 +25,7 @@ export class UserService {
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
-        private readonly referallsService: ReferallsService,
+        private readonly referralsService: ReferralsService,
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
     }
@@ -38,25 +38,25 @@ export class UserService {
         session.startTransaction();
 
         try {
-            const onewinReferall = await this.userRepository.findOneWinReferall(onewin_id, session);
+            const onewinReferral = await this.userRepository.findOneWinReferral(onewin_id, session);
 
-            if (!onewinReferall) throw new AppException({ message: 'Referall not found', errorCode: 'REFERALL_NOT_EXISTS' }, HttpStatus.NOT_FOUND);
+            if (!onewinReferral) throw new AppException({ message: 'Referral not found', errorCode: 'REFERRAL_NOT_EXISTS' }, HttpStatus.NOT_FOUND);
             
-            if (onewinReferall.user_id) throw new AppException({ message: 'Referall already verified', errorCode: 'REFERALL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
+            if (onewinReferral.user_id) throw new AppException({ message: 'Referral already verified', errorCode: 'REFERRAL_ALREADY_TAKEN' }, HttpStatus.BAD_REQUEST);
 
-            await this.referallsService.createUserReferralCode(user._id, session);
+            await this.referralsService.createUserReferralCode(user._id, session);
             
-            await user.updateOne({ isVerified: true, onewin: onewinReferall._id }, { session });
-            await onewinReferall.updateOne({ user_id: user._id }, { session });
+            await user.updateOne({ isVerified: true, onewin: onewinReferral._id }, { session });
+            await onewinReferral.updateOne({ user_id: user._id }, { session });
 
-            const invitedByRef = user.invitedBy ? await this.referallsService.findOneAndUpdateCode(
+            const invitedByRef = user.invitedBy ? await this.referralsService.findOneAndUpdateCode(
                 { _id: user.invitedBy },
                 { $inc: { total_verified: 1 } },
                 { session, new: true },
             ) : undefined;
 
             if (invitedByRef?.user_id) {
-                const reward = user.isPremium ? PREMIUM_REQUEST_LIMIT_REFERALL_REWARD : DEFAULT_REQUEST_LIMIT_REFERALL_REWARD;
+                const reward = user.isPremium ? PREMIUM_REQUEST_LIMIT_REFERRAL_REWARD : DEFAULT_REQUEST_LIMIT_REFERRAL_REWARD;
 
                 await this.userRepository.findOneAndUpdateUser(
                     { _id: invitedByRef.user_id },
@@ -80,9 +80,9 @@ export class UserService {
     };
 
     public postback = async ({ onewin_id, country, type, name }: { onewin_id: number; country: string; type: PostbackType; name: string }) => {
-        if (await this.userRepository.referallExists({ onewin_id })) throw new ConflictException('Provided onewin id already exists');
+        if (await this.userRepository.referralExists({ onewin_id })) throw new ConflictException('Provided onewin id already exists');
 
-        await this.userRepository.createOneWinReferall(onewin_id);
+        await this.userRepository.createOneWinReferral(onewin_id);
 
         this.tgProvider.bot.api.sendMessage(
             this.configService.getOrThrow<number>('NEW_LEED_GROUP_ID'),
@@ -191,7 +191,7 @@ export class UserService {
                 session.startTransaction();
 
                 try {
-                    const invitedByRef = await this.referallsService.findOneAndUpdateCode(
+                    const invitedByRef = await this.referralsService.findOneAndUpdateCode(
                         { code: ref }, 
                         { $inc: { total_count: 1 } }, 
                         { session }
@@ -235,15 +235,15 @@ export class UserService {
         return rest;
     };
 
-    public referalls = async (userId: Types.ObjectId, cursor?: string) => {
-        const referallCode = await this.referallsService.findOne({ user_id: userId });
+    public referrals = async (userId: Types.ObjectId, cursor?: string) => {
+        const referralCode = await this.referralsService.findOne({ user_id: userId });
 
-        if (!referallCode) throw new NotFoundException('Referall code not found');
+        if (!referralCode) throw new NotFoundException('Referral code not found');
 
-        const referalls = (await this.userRepository.aggregate([
+        const referrals = (await this.userRepository.aggregate([
             {
                 $match: {
-                    invitedBy: referallCode._id,
+                    invitedBy: referralCode._id,
                     ...(cursor && { _id: { $lt: new Types.ObjectId(cursor) } }),
                 },
             },
@@ -251,7 +251,7 @@ export class UserService {
             {
                 $facet: {
                     items: [
-                        { $limit: REFERALLS_BATCH + 1 },
+                        { $limit: REFERRALS_BATCH + 1 },
                         { $project: { name: 1, isVerified: 1, createdAt: 1, telegram_id: 1 } },
                     ],
                 },
@@ -259,15 +259,15 @@ export class UserService {
             {
                 $project: {
                     items: {
-                        $slice: ['$items', REFERALLS_BATCH]
+                        $slice: ['$items', REFERRALS_BATCH]
                     },
                     meta: {
-                        hasMore: { $gt: [{ $size: '$items' }, REFERALLS_BATCH] },
-                        perPage: { $literal: REFERALLS_BATCH },
+                        hasMore: { $gt: [{ $size: '$items' }, REFERRALS_BATCH] },
+                        perPage: { $literal: REFERRALS_BATCH },
                         nextCursor: {
                             $cond: {
-                                if: { $gt: [{ $size: '$items' }, REFERALLS_BATCH] },
-                                then: { $toString: { $arrayElemAt: ['$items._id', REFERALLS_BATCH - 1] } },
+                                if: { $gt: [{ $size: '$items' }, REFERRALS_BATCH] },
+                                then: { $toString: { $arrayElemAt: ['$items._id', REFERRALS_BATCH - 1] } },
                                 else: null,
                             }
                         }
@@ -277,23 +277,23 @@ export class UserService {
         ]))[0];
 
         return {
-            referalls,
+            referrals,
             ...(!cursor && {
                 rewards: {
                     request_limit: {
-                        default: DEFAULT_REQUEST_LIMIT_REFERALL_REWARD,
-                        premium: PREMIUM_REQUEST_LIMIT_REFERALL_REWARD,
+                        default: DEFAULT_REQUEST_LIMIT_REFERRAL_REWARD,
+                        premium: PREMIUM_REQUEST_LIMIT_REFERRAL_REWARD,
                     },
                 },
-                code: referallCode.code,
+                code: referralCode.code,
             }),
         };
     }
 
     public generatePreparedMessage = async (telegram_id: number, userId: Types.ObjectId) => {
-        const ref = await this.referallsService.findOne({ user_id: userId });
+        const ref = await this.referralsService.findOne({ user_id: userId });
 
-        if (!ref) throw new NotFoundException('Referall code not found');
+        if (!ref) throw new NotFoundException('Referral code not found');
 
         const preparedMessage = await this.tgProvider.bot.api.savePreparedInlineMessage(
             telegram_id,

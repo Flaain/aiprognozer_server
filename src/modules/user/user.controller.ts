@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Post, Query, Req } from '@nestjs/common';
-import { Routes, validateReferallCursorQueryPipe, verifyOneWinIdParamPipe } from './constants';
+import { Routes, validateReferralCursorQueryPipe, verifyOneWinIdParamPipe } from './constants';
 import { UserService } from './user.service';
 import { RequestWithInitDataAndUser } from 'src/shared/types';
 import { Auth } from '../auth/decorators/auth.decorator';
@@ -32,10 +32,10 @@ export class UserController {
         return this.userService.postback({ onewin_id, country, type, name });
     }
 
-    @Get(Routes.REFERALLS)
+    @Get(Routes.REFERRALS)
     @Auth(true)
-    referalls(@Req() { user }: RequestWithInitDataAndUser, @Query('cursor', validateReferallCursorQueryPipe) cursor?: string) {
-        return this.userService.referalls(user._id, cursor);
+    referrals(@Req() { user }: RequestWithInitDataAndUser, @Query('cursor', validateReferralCursorQueryPipe) cursor?: string) {
+        return this.userService.referrals(user._id, cursor);
     }
 
     @Get(Routes.INVITE)

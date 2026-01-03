@@ -1,6 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 
-export type AppExceptionCode = 'REFERALL_NOT_EXISTS' | 'REFERALL_ALREADY_TAKEN' | 'ALREADY_VERIFIED' | 'REQUEST_LIMIT_EXCEEDED';
+export type AppExceptionCode = 'REFERRAL_NOT_EXISTS' | 'REFERRAL_ALREADY_TAKEN' | 'ALREADY_VERIFIED' | 'REQUEST_LIMIT_EXCEEDED';
 
 export class AppException extends Error {
     private readonly errorCode?: AppExceptionCode;

@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 
 @Schema({ timestamps: true })
-export class Referalls {
+export class Referrals {
     @Prop({ type: String, required: true, unique: true, index: true })
     code: string;
 
@@ -29,4 +29,4 @@ export class Referalls {
     total_verified: number;
 }
 
-export const ReferallsSchema = SchemaFactory.createForClass(Referalls);
+export const ReferralsSchema = SchemaFactory.createForClass(Referrals);
