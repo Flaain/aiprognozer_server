@@ -14,6 +14,7 @@ export const Routes = {
     POSTBACK: 'postback',
     VERIFY: 'verify',
     REFERALLS: 'referalls',
+    INVITE: 'invite'
 }
 
 export const verifyOneWinIdParamPipe: PipeTransform<string, number> = {
