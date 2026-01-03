@@ -33,4 +33,6 @@ export class UserRepository {
     exists = (filter: RootFilterQuery<User>) => this.userModel.exists(filter);
 
     aggregate = (pipeline: Array<PipelineStage>, options?: AggregateOptions) => this.userModel.aggregate(pipeline, options);
+
+    find = (filter: RootFilterQuery<User>, projection?: ProjectionType<User> | null | undefined, options?: QueryOptions<User> | null | undefined) => this.userModel.find(filter, projection, options);
 }
