@@ -53,7 +53,7 @@ export class DashboardService {
         ctx.api.editMessageText(
             ctx.chatId,
             ctx.callbackQuery.message.message_id,
-            '*Отправьте новую ссылку*\n\nподдерживаются следующие форматы: \n\nhttps://1qwerty.com/\nhttps://1qwerty.com/?p=aiprognoz',
+            '*Отправьте новую ссылку*',
             { parse_mode: 'Markdown' },
         );
 
