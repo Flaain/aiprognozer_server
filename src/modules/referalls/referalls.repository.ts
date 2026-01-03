@@ -9,6 +9,8 @@ export class ReferallsRepository {
 
     createUserReferralCode = async (userId: Types.ObjectId, code: string, session?: ClientSession) => this.referallsModel.create([{ code, user_id: userId }], { session });
 
+    findById = (id: Types.ObjectId, projection?: ProjectionType<Referalls>, options?: QueryOptions<Referalls>) => this.referallsModel.findById(id);
+
     findReferallCode = (code: string, session?: ClientSession) => this.referallsModel.findOne({ code }, undefined, { session });
 
     findOneAndUpdateCode = (filter?: RootFilterQuery<Referalls>, update?: UpdateQuery<Referalls>, options?: QueryOptions<Referalls>) => this.referallsModel.findOneAndUpdate(filter, update, options);
