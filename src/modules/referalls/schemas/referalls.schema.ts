@@ -24,6 +24,9 @@ export class Referalls {
 
     @Prop({ type: Number, default: 0 })
     total_count: number;
+
+    @Prop({ type: Number, default: 0 })
+    total_verified: number;
 }
 
 export const ReferallsSchema = SchemaFactory.createForClass(Referalls);
