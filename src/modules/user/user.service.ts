@@ -179,7 +179,7 @@ export class UserService {
             { telegram_id: webAppUser.id }, 
             userFields, 
             { 
-                projection: { onewin: 0, invitedBy: 0, telegram_id: 0 }, 
+                projection: { onewin: 0, invitedBy: 0, telegram_id: 0, total_requests: 0, total_tasks_earned: 0 }, 
                 new: true 
             }
         );
@@ -230,7 +230,7 @@ export class UserService {
             await user.save();
         }
 
-        const { telegram_id, __v, onewin, invitedBy, ...rest } = user.toObject();
+        const { telegram_id, __v, onewin, invitedBy, total_requests, total_tasks_earned, ...rest } = user.toObject();
 
         return rest;
     };

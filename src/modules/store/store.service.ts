@@ -113,42 +113,39 @@ export class StoreService {
     };
 
     private getDailyProductInvoice = async (user: UserDocument, product: ProductDocument) => {
-        const payment = await this.paymentService.findOne({ userId: user._id, productId: product._id }, null, { sort: { createdAt: -1 } });
-
-        if (!payment || payment.status === PAYMENT_STATUS.REFUNDED) {
-            const payment = await this.paymentService.create({
-                productDescription: product.description,
-                productName: product.name,
-                productPrice: product.price,
+        const payment = await this.paymentService.findOneAndUpdate(
+            {
                 userId: user._id,
                 productId: product._id,
-                status: PAYMENT_STATUS.PENDING
-            });
-
-            return this.createInvoice(user, product, payment._id.toString());
-        }
-
-        if (payment.status === PAYMENT_STATUS.PAID) {
-            if (+new Date(+new Date(payment.payedAt) + ms('24h')) > Date.now()) {
-                throw new BadRequestException('Cannot create invoice. Daily product was already payed today');
-            } else {
-                const payment = await this.paymentService.create({
+                $or: [
+                    { status: PAYMENT_STATUS.PENDING },
+                    {
+                        status: PAYMENT_STATUS.PAID,
+                        payedAt: { $gte: new Date(Date.now() - ms('24h')) },
+                    },
+                ],
+            },
+            {
+                $setOnInsert: {
                     productDescription: product.description,
                     productName: product.name,
                     productPrice: product.price,
                     userId: user._id,
                     productId: product._id,
-                    status: PAYMENT_STATUS.PENDING
-                });
-    
-                return this.createInvoice(user, product, payment._id.toString());
-            }
+                    status: PAYMENT_STATUS.PENDING,
+                },
+            },
+            { sort: { createdAt: -1 }, upsert: true, new: true },
+        );
+
+        if (payment.status === PAYMENT_STATUS.PAID) {
+            throw new BadRequestException('Cannot create invoice. Product already payed');
         }
 
         return this.createInvoice(user, product, payment._id.toString());
     };
 
-    private getDefaultProductInvoice = async (user: UserDocument, product: ProductDocument, ) => {
+    private getDefaultProductInvoice = async (user: UserDocument, product: ProductDocument) => {
         const payment = await this.paymentService.findOneAndUpdate(
             { userId: user._id, productId: product._id, status: { $ne: PAYMENT_STATUS.REFUNDED } },
             {

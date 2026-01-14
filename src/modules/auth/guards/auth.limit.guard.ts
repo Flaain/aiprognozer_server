@@ -22,9 +22,12 @@ export class LimitGuard implements CanActivate {
                 );
             } else {
                 user.request_count += 1;
+                user.total_requests += 1;
             }
         } else {
             user.request_count = 1;
+            user.total_requests += 1;
+            
             user.first_request_at = new Date();
         }
 

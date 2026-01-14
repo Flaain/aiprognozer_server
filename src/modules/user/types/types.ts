@@ -11,6 +11,8 @@ export interface IUser {
     isUnlimited: boolean;
     isVerified: boolean;
     invitedBy?: Types.ObjectId;
+    total_tasks_earned: number;
+    total_requests: number;
     onewin?: string | Types.ObjectId;
 }
 

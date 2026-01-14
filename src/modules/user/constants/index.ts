@@ -19,11 +19,11 @@ export const Routes = {
 
 export const verifyOneWinIdParamPipe: PipeTransform<string, number> = {
     transform: (value) => {
-        const parsedValue = parseInt(value);
+        const id = Number(value);
 
-        if (!parsedValue || isNaN(parsedValue)) throw new BadRequestException('Invalid onewin id');
+        if (!Number.isInteger(id)) throw new BadRequestException('Invalid onewin id');
 
-        return parsedValue;
+        return id;
     }
 }
 

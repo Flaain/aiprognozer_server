@@ -6,7 +6,7 @@ export class VerifiedGuard implements CanActivate {
     canActivate(context: ExecutionContext) {
         const request = context.switchToHttp().getRequest<RequestWithInitDataAndUser>();
 
-        if (!request.user.isVerified) throw new ForbiddenException();
+        if (!request.user?.isVerified) throw new ForbiddenException();
 
         return true;
     }
