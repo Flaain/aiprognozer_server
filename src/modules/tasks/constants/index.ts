@@ -26,6 +26,7 @@ export const tasksTypes: Array<TaskType> = ['ads', 'referrals', 'requests', 'soc
 
 export const queryVerifyTypePipe: PipeTransform<TaskType, TaskType> = {
     transform: (type) => {
+        if (!type) throw new Error('Task type is required');
         if (!tasksTypes.includes(type)) throw new Error('Invalid task type');
 
         return type;
