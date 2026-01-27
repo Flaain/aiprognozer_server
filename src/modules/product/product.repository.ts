@@ -18,69 +18,107 @@ export class ProductRepository {
         options?: QueryOptions<Product> & Abortable,
     ) => this.productModel.findOne<ProductDocument>(filter, projection, options);
 
-    public findById = (id: Types.ObjectId | string, projection?: ProjectionType<Product>, options?: QueryOptions<Product>) =>
-        this.productModel.findById(id, projection, options);
+    public findById = (
+        id: Types.ObjectId | string,
+        projection?: ProjectionType<Product>,
+        options?: QueryOptions<Product>,
+    ) => this.productModel.findById(id, projection, options);
 
-    public aggregate = <T = Product>(pipeline?: Array<PipelineStage>, options?: AggregateOptions) =>
-        this.productModel.aggregate<T>(pipeline, options);
+    public aggregate = <T = Product>(pipeline?: Array<PipelineStage>, options?: AggregateOptions) => this.productModel.aggregate<T>(pipeline, options);
 
-    public getProducts = (userId: Types.ObjectId) =>
-        this.productModel.aggregate<Product & { canBuy: boolean; payedAt?: Date }>([
-            { $match: { $expr: { $ne: ['$type', PRODUCT_TYPE.LADDER] } } },
-            {
-                $lookup: {
-                    from: 'payments',
-                    let: { productId: '$_id' },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ['$userId', userId] },
-                                        { $eq: ['$productId', '$$productId'] },
-                                        { $eq: ['$status', PAYMENT_STATUS.PAID] },
+    public getProducts = (userId: Types.ObjectId) => this.productModel.aggregate<Product & { canBuy: boolean; payedAt?: Date }>([
+        { $match: { $expr: { $ne: ['$type', PRODUCT_TYPE.LADDER] } } },
+        {
+            $lookup: {
+                from: 'payments',
+                let: { productId: '$_id' },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ['$userId', userId] },
+                                    { $eq: ['$productId', '$$productId'] },
+                                    { $eq: ['$status', PAYMENT_STATUS.PAID] },
+                                ],
+                            },
+                        },
+                    },
+                    { $sort: { payedAt: -1 } },
+                    { $limit: 1 },
+                ],
+                as: 'payment',
+            },
+        },
+        { $unwind: { path: '$payment', preserveNullAndEmptyArrays: true } },
+        {
+            $addFields: {
+                canBuy: {
+                    $switch: {
+                        branches: [
+                            {
+                                case: { $eq: ['$type', PRODUCT_TYPE.DEFAULT] },
+                                then: { $eq: ['$payment', null] },
+                            },
+                            {
+                                case: { $eq: ['$type', PRODUCT_TYPE.DAILY] },
+                                then: {
+                                    $or: [
+                                        { $eq: ['$payment', null] },
+                                        { $lt: [{ $add: ['$payment.payedAt', ms('24h')] }, '$$NOW'] },
                                     ],
                                 },
                             },
-                        },
-                        { $sort: { payedAt: -1 } },
-                        { $limit: 1 },
-                    ],
-                    as: 'payment',
+                        ],
+                        default: false,
+                    },
                 },
-            },
-            { $unwind: { path: '$payment', preserveNullAndEmptyArrays: true } },
-            {
-                $addFields: {
-                    canBuy: {
-                        $switch: {
-                            branches: [
-                                {
-                                    case: { $eq: ['$type', PRODUCT_TYPE.DEFAULT] },
-                                    then: { $eq: ['$payment', null] },
-                                },
-                                {
-                                    case: { $eq: ['$type', PRODUCT_TYPE.DAILY] },
-                                    then: {
-                                        $or: [
-                                            { $eq: ['$payment', null] },
-                                            { $lt: [{ $add: ['$payment.payedAt', ms('24h')] }, '$$NOW'] },
+                nextPayAvailableAt: {
+                    $cond: {
+                        if: { $ne: ['$payment', null] },
+                        then: {
+                            $round: {
+                                $divide: [
+                                    {
+                                        $subtract: [
+                                            {
+                                                $convert: {
+                                                    input: {
+                                                        $dateAdd: {
+                                                            startDate: {
+                                                                $getField: {
+                                                                    field: 'createdAt',
+                                                                    input: '$payment',
+                                                                },
+                                                            },
+                                                            unit: 'hour',
+                                                            amount: 24,
+                                                        },
+                                                    },
+                                                    to: 'long',
+                                                    onError: null,
+                                                    onNull: null,
+                                                },
+                                            },
+                                            { $toLong: '$$NOW' },
                                         ],
                                     },
-                                },
-                            ],
-                            default: false,
+                                    1000,
+                                ],
+                            },
                         },
+                        else: '$$REMOVE',
                     },
-                    payedAt: {
-                        $cond: {
-                            if: { $ne: ['$payment', null] },
-                            then: '$payment.payedAt',
-                            else: '$$REMOVE',
-                        },
+                },
+                payedAt: {
+                    $cond: {
+                        if: { $ne: ['$payment', null] },
+                        then: '$payment.payedAt',
+                        else: '$$REMOVE',
                     },
                 },
             },
-            { $project: { payment: 0 } },
-        ]);
+        },
+        { $project: { payment: 0 } },
+    ]);
 }
