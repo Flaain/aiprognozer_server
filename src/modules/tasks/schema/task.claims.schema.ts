@@ -14,7 +14,7 @@ export class TasksClaims {
     refCollection: TasksCollectionType;
 
     @Prop({ type: String, required: true })
-    claimedAt?: string;
+    dailyPrefix: string;
 
     @Prop({ type: Number, required: true })
     taskReward: number;
@@ -22,8 +22,8 @@ export class TasksClaims {
     @Prop({ type: String, required: true })
     taskTitle: string;
 
-    @Prop({ type: String, required: true })
-    taskDescription: string;
+    @Prop({ type: String })
+    taskDescription?: string;
 
     @Prop({ type: String })
     taskLink?: string;
@@ -44,6 +44,6 @@ TasksClaimsSchema.index(
 );
 
 TasksClaimsSchema.index(
-    { userId: 1, taskId: 1, claimedAt: 1 },
+    { userId: 1, taskId: 1, dailyPrefix: 1 },
     { unique: true, partialFilterExpression: { refCollection: 'tasks_daily' } },
 );
