@@ -33,6 +33,13 @@ export const getThresholdBasePipelineFactory = (userId: Types.ObjectId, value: n
                     else: false,
                 },
             },
+            claimedAt: {
+                $cond: {
+                    if: { $eq: [{ $size: '$claim' }, 1] },
+                    then: { $getField: { field: 'createdAt', input: { $first: '$claim' } } },
+                    else: '$$REMOVE'
+                }
+            }
         },
     },
     { $project: { claim: 0 } },
