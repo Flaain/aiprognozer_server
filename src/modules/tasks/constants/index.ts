@@ -22,7 +22,7 @@ export const Routes = {
     VERIFY: 'verify/:id',
 };
 
-export const tasksTypes: Array<TaskType> = ['ads', 'referrals', 'requests', 'socials'];
+export const tasksTypes: Array<TaskType> = ['ads', 'referrals', 'requests', 'socials', 'daily'];
 
 export const queryVerifyTypePipe: PipeTransform<TaskType, TaskType> = {
     transform: (type) => {
