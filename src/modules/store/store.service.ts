@@ -18,10 +18,12 @@ import { UserService } from '../user/user.service';
 import { Product } from '../product/schema/product.schema';
 import { ConfigService } from '@nestjs/config';
 import { SOCKET_EVENTS } from '../gateway/constants';
+import { Payment } from '../payment/schema/payment.schema';
 
 @Injectable()
 export class StoreService {
     private readonly logger = new Logger(StoreService.name);
+    private readonly isProduction: boolean;
 
     constructor(
         private readonly paymentService: PaymentService,
@@ -31,7 +33,9 @@ export class StoreService {
         private readonly configService: ConfigService,
         @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
         @InjectConnection() private readonly connection: Connection,
-    ) {}
+    ) {
+        this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
+    }
 
     public getStore = async (user: UserDocument) => {
         const currentLadder = await this.paymentService.getCurrentLadder(user._id);
@@ -69,7 +73,7 @@ export class StoreService {
             '',
             'XTR',
             [{ 
-                amount: this.configService.getOrThrow('NODE_ENV') === 'development' ? 1 : product.price ?? this.calculateDynamicProductPrice(product.slug, user), 
+                amount: this.isProduction ? (product.price ?? this.calculateDynamicProductPrice(product.slug, user)) : 1, 
                 label: product.name
             }],
         );
@@ -89,19 +93,20 @@ export class StoreService {
         return true;
     }
 
+    private setOnInsertProduct = (product: ProductDocument): Omit<Payment, 'userId' | 'productId'> => ({
+        productDescription: product.description,
+        productName: product.name,
+        productPrice: product.price,
+        status: PAYMENT_STATUS.PENDING,
+        expireAt: new Date(Date.now() + ms('1d'))
+    })
+    
     private getLadderProductInvoice = async (user: UserDocument, product: ProductDocument) => {
         await this.isPreviousProductPayed(user, product);
         
         const payment = await this.paymentService.findOneAndUpdate(
             { userId: user._id, productId: product._id, status: { $ne: PAYMENT_STATUS.REFUNDED } },
-            { 
-                $setOnInsert: { 
-                    status: PAYMENT_STATUS.PENDING, 
-                    productDescription: product.description, 
-                    productName: product.name, 
-                    productPrice: product.price 
-                } 
-            },
+            { $setOnInsert: this.setOnInsertProduct(product) },
             { new: true, upsert: true }
         );
 
@@ -125,16 +130,7 @@ export class StoreService {
                     },
                 ],
             },
-            {
-                $setOnInsert: {
-                    productDescription: product.description,
-                    productName: product.name,
-                    productPrice: product.price,
-                    userId: user._id,
-                    productId: product._id,
-                    status: PAYMENT_STATUS.PENDING,
-                },
-            },
+            { $setOnInsert: this.setOnInsertProduct(product) },
             { sort: { createdAt: -1 }, upsert: true, new: true },
         );
 
@@ -148,16 +144,9 @@ export class StoreService {
     private getDefaultProductInvoice = async (user: UserDocument, product: ProductDocument) => {
         const payment = await this.paymentService.findOneAndUpdate(
             { userId: user._id, productId: product._id, status: { $ne: PAYMENT_STATUS.REFUNDED } },
-            {
-                $setOnInsert: {
-                    status: PAYMENT_STATUS.PENDING,
-                    productDescription: product.description,
-                    productName: product.name,
-                    productPrice: product.price
-                }
-            },
+            { $setOnInsert: this.setOnInsertProduct(product) },
             { new: true, upsert: true }
-        )
+        );
 
         if (payment.status === PAYMENT_STATUS.PAID) {
             throw new BadRequestException(`Cannot create invoice. Product already payed`);
@@ -211,7 +200,8 @@ export class StoreService {
                     payedAt,
                     status: PAYMENT_STATUS.PAID,
                     productPrice: ctx.message.successful_payment.total_amount,
-                    telegramPaymentChargeId: ctx.message.successful_payment.telegram_payment_charge_id
+                    telegramPaymentChargeId: ctx.message.successful_payment.telegram_payment_charge_id,
+                    $unset: { expireAt: 1 }
                 },
                 { session }
             );
@@ -222,7 +212,13 @@ export class StoreService {
 
             this.gatewayService.sockets.get(payload.userId)?.forEach((socket) => {
                 socket.emit(STORE_EVENTS.PRODUCT_BUY, {
-                    buyedProduct: { ...restProduct, payedAt },
+                    buyedProduct: { 
+                        ...restProduct,
+                        ...(product.type === PRODUCT_TYPE.DAILY && {
+                            nextPayAvailableAt: Math.round((+payedAt + ms('24h') - Date.now()) / 1000)
+                        }),
+                        payedAt 
+                    },
                     nextProduct,
                     ...(restProduct.slug.startsWith('plus') && {
                         recalculatedPrices: {
@@ -230,13 +226,14 @@ export class StoreService {
                         },
                     }),
                 });
+                
                 socket.emit(SOCKET_EVENTS.PRODUCT_BUY, restProduct.effect);
             });
 
             this.tgProvider.bot.api
                 .sendMessage(
                     ctx.chat.id,
-                    `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ${ctx.message.successful_payment.total_amount}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
+                    `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ⭐️${ctx.message.successful_payment.total_amount}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
                     {
                         parse_mode: 'HTML',
                         message_effect_id: MESSAGE_EFFECT_ID.CONFETTI,
@@ -271,7 +268,7 @@ export class StoreService {
 
             await this.paymentService.findOneAndUpdate(
                 { _id: paymentId },
-                { status: PAYMENT_STATUS.REFUNDED, refundedAt },
+                { status: PAYMENT_STATUS.REFUNDED, refundedAt, $unset: { expireAt: 1 } },
                 { session },
             );
 
@@ -280,7 +277,7 @@ export class StoreService {
             this.tgProvider.bot.api
                 .sendMessage(
                     ctx.chat.id,
-                    `<b>Уведомление о возврате средств</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы зафиксировали возврат платежа за <b>"${product.name}"</b>.\n\n<b>Детали операции:</b>\n\nID платежа — <code>${ctx.message.refunded_payment.telegram_payment_charge_id}</code>\nСумма возврата — ${ctx.message.refunded_payment.total_amount}\n\nВ связи с возвратом все эффекты приобретённого продукта были отключены и удалены из вашего аккаунта.\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#возврат`,
+                    `<b>Уведомление о возврате средств</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы зафиксировали возврат платежа за <b>"${product.name}"</b>.\n\n<b>Детали операции:</b>\n\nID платежа — <code>${ctx.message.refunded_payment.telegram_payment_charge_id}</code>\nСумма возврата — ⭐️${ctx.message.refunded_payment.total_amount}\n\nВ связи с возвратом все эффекты приобретённого продукта были отключены и удалены из вашего аккаунта.\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#возврат`,
                     {
                         parse_mode: 'HTML',
                         message_effect_id: MESSAGE_EFFECT_ID.DISLIKE,
@@ -305,6 +302,10 @@ export class StoreService {
         try {
             const { productId, userId, paymentId } = this.validateInvoicePayload(ctx.preCheckoutQuery.invoice_payload);
 
+            if (!(await this.paymentService.exists({ _id: paymentId }))) {
+                throw new BadRequestException('Cannot proceed payment. Invoice not found. Please create a new invoice.');
+            }
+            
             if (await this.paymentService.isAlreadyPayedOrRefunded(new Types.ObjectId(paymentId))) {
                 throw new BadRequestException('Cannot proceed payment. This invoice was already payed or refunded.');
             }
@@ -314,7 +315,7 @@ export class StoreService {
                 this.productService.getProductById(productId),
             ])
 
-            if (ctx.preCheckoutQuery.total_amount !== (product.price ?? this.calculateDynamicProductPrice(product.slug, user))) {
+            if (this.isProduction && ctx.preCheckoutQuery.total_amount !== (product.price ?? this.calculateDynamicProductPrice(product.slug, user))) {
                 throw new BadRequestException('Canoot proceed payment. Product price has changed, please create a new invoice.');
             }
 
