@@ -3,10 +3,10 @@ import { UserDocument } from '../user/types/types';
 import { TasksRepository } from './tasks.repository';
 import { Connection, ModifyResult, Types } from 'mongoose';
 import { ReferralsService } from '../referrals/referrals.service';
-import { TasksCollectionType, TasksDailyDocument, TaskType } from './types';
+import { TasksClaimsDocument, TasksCollectionType, TasksDailyDocument, TaskType } from './types';
 import { AppException } from 'src/shared/exceptions/app.exception';
 import { TASK_TYPE } from './constants';
-import { defaultResponse, PROVIDERS } from 'src/shared/constants';
+import { PROVIDERS } from 'src/shared/constants';
 import { TgProvider } from '../tg/types';
 import { InjectConnection } from '@nestjs/mongoose';
 import { MongoServerError } from 'mongodb';
@@ -65,6 +65,8 @@ export class TasksService {
         try {
             await this.tgProvider.bot.api.getChatMember(telegramChatId, userTelegramId);
         } catch (error) {
+            this.logger.error(error);
+            
             throw new AppException(
                 {
                     message: 'You are not a member of this chat',
@@ -82,17 +84,31 @@ export class TasksService {
         session.startTransaction();
 
         try {
-            const { lastErrorObject } = await this.tasksRepository.findOneAndUpdateClaim<ModifyResult<TasksDailyDocument>>(
+            const { value, lastErrorObject } = await this.tasksRepository.findOneAndUpdateClaim<ModifyResult<TasksClaimsDocument>>(
                 { userId: user._id, taskId: task._id, refCollection: 'tasks_daily', createdAt: { $gte: new Date(Date.now() - ms('24h')) } },
-                { $setOnInsert: { claimedAt: new Date().toISOString().split('T')[0] } },
+                {
+                    $setOnInsert: { 
+                        dailyPrefix: new Date().toISOString().split('T')[0], 
+                        taskReward: task.reward,
+                        taskDescription: task.description,
+                        taskLink: task.link,
+                        taskTitle: task.title, 
+                    }
+                },
                 { upsert: true, new: true, includeResultMetadata: true, session, sort: { createdAt: -1 } },
             );
+
+            const nextClaimAvailableAt = Math.round((+new Date(value.createdAt.toString()) + ms('24h') - Date.now()) / 1000);
 
             if (lastErrorObject.updatedExisting) {
                 throw new AppException(
                     {
                         message: 'Task already claimed',
                         errorCode: 'TASK_ALREADY_CLAIMED',
+                        data: {
+                            nextClaimAvailableAt,
+                            claimedAt: value.createdAt,
+                        }
                     },
                     HttpStatus.BAD_REQUEST,
                 );
@@ -105,23 +121,23 @@ export class TasksService {
 
             await session.commitTransaction();
 
-            return defaultResponse;
+            return { 
+                nextClaimAvailableAt,
+                claimedAt: value.createdAt, 
+            };
         } catch (error) {
+            this.logger.error(error);
+
             await session.abortTransaction();
 
             if (error instanceof MongoServerError && error.code === 11000) {
-                throw new AppException(
-                    {
-                        message: 'Task already claimed',
-                        errorCode: 'TASK_ALREADY_CLAIMED',
-                    },
-                    HttpStatus.BAD_REQUEST,
-                );
+                throw new AppException({ message: 'Task already claimed' }, HttpStatus.BAD_REQUEST);
             };
+
+            throw error;
         } finally {
             session.endSession();
         }
-        
     }
 
     private verifyBasicTask = async (user: UserDocument, taskId: string, type: Exclude<TaskType, 'daily'>) => {
@@ -134,11 +150,16 @@ export class TasksService {
             requests: 'tasks_requests'
         };
         
-        if (await this.tasksRepository.isAlreadyClaimed(user._id, task._id)) {
+        const claim = await this.tasksRepository.findOneClaim({ userId: user._id, taskId: task._id }, { createdAt: 1 });
+
+        if (claim) {
             throw new AppException(
                 {
                     message: 'Task already claimed',
                     errorCode: 'TASK_ALREADY_CLAIMED',
+                    data: {
+                        claimedAt: claim.createdAt,
+                    }
                 },
                 HttpStatus.BAD_REQUEST,
             );
@@ -169,7 +190,7 @@ export class TasksService {
         session.startTransaction();
 
         try {
-            await this.tasksRepository.claimTask({
+            const claim = await this.tasksRepository.claimTask({
                 refCollection: refMap[type],
                 taskDescription: task.description,
                 taskLink: task.link,
@@ -177,6 +198,7 @@ export class TasksService {
                 taskTitle: task.title,
                 taskId: task._id,
                 userId: user._id,
+                dailyPrefix: new Date().toISOString().split('T')[0],
             }, session);
 
             await user.updateOne(
@@ -186,19 +208,17 @@ export class TasksService {
 
             await session.commitTransaction();
 
-            return defaultResponse;
+            return { claimedAt: claim[0].createdAt };
         } catch (error) {
+            this.logger.error(error);
+
             await session.abortTransaction();
 
             if (error instanceof MongoServerError && error.code === 11000) {
-                throw new AppException(
-                    {
-                        message: 'Task already claimed',
-                        errorCode: 'TASK_ALREADY_CLAIMED',
-                    },
-                    HttpStatus.BAD_REQUEST,
-                );
+                throw new AppException({ message: 'Task already claimed' }, HttpStatus.BAD_REQUEST);
             };
+
+            throw error;
         } finally {
             session.endSession();
         }
@@ -231,7 +251,7 @@ export class TasksService {
     private getReferralsTasks = async (userId: Types.ObjectId) => {
         const ref = await this.referralsService.findOne({ user_id: userId }, { total_verified: 1 });
 
-        if (!ref) this.logger.warn('No referral document found for user -->', userId.toString());
+        if (!ref) this.logger.warn(`No referral document found for user --> ${userId.toString()}`);
 
         const tasks = await this.tasksRepository.getReferralsTasks(userId, ref?.total_verified ?? 0);
 
