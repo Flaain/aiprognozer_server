@@ -26,8 +26,15 @@ export const getBaseTasksPipelineFactory = (userId: Types.ObjectId): Array<Pipel
                     else: false,
                 },
             },
+            claimedAt: {
+                $cond: {
+                    if: { $eq: [{ $size: '$claim' }, 1] },
+                    then: { $getField: { field: 'createdAt', input: { $first: '$claim' } } },
+                    else: '$$REMOVE',
+                }
+            }
         },
     },
-    { $project: { claim: 0 } },
+    { $project: { claim: 0, expireAt: 0 } },
     { $sort: { canClaim: -1, createdAt: -1 } },
 ];
