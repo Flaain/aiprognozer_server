@@ -6,8 +6,8 @@ export class TasksReferrals implements TaskBase {
     @Prop({ type: String, required: true })
     title: string;
 
-    @Prop({ type: String, required: true })
-    description: string;
+    @Prop({ type: String })
+    description?: string;
 
     @Prop({ type: Number, required: true })
     reward: number;
