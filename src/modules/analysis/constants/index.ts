@@ -3,6 +3,7 @@ import { SportType } from '../types';
 
 export const Routes = {
     PREFIX: 'analysis',
+    STATUS: 'status'
 } as const;
 
 const ALLOWED_SPORT_TYPES: Array<SportType> = ['basketball', 'football', 'mma'];
