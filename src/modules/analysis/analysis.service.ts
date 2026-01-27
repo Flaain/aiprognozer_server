@@ -12,6 +12,7 @@ import {
 import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
 import { TgProvider } from '../tg/types';
 import { join } from 'node:path';
+import { ms } from 'src/shared/utils/ms';
 
 @Injectable()
 export class AnalysisService {
@@ -62,4 +63,17 @@ export class AnalysisService {
 
         return { prediction, alternatives, first_request_at: user.first_request_at };
     };
+
+    public status = (user: UserDocument) => {
+        if (!user.first_request_at) {
+            return {
+                isReachedLimit: false,
+            }
+        }
+        
+        return {
+            isReachedLimit: !user.isUnlimited && user.role !== 'ADMIN' && user.request_count === user.request_limit,
+            nextRequestsAvailableAt: Math.round((+new Date(user.first_request_at) + ms('24h') - Date.now()) / 1000),
+        };
+    }
 }

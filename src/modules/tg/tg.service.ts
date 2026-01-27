@@ -105,7 +105,9 @@ export class TgService {
             // this.tgProvider.bot.use(limit({ limit: 1, timeFrame: 500 }));
             
             this.tgProvider.bot.use(conversations());
-            this.tgProvider.bot.use(createConversation(this.handleRefund, 'refund-conversation'));
+
+            !this.isProduction && this.tgProvider.bot.use(createConversation(this.handleRefund, 'refund-conversation'));
+            
             this.tgProvider.bot.use(
                 createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), {
                     id: 'dashboard/link',
@@ -118,7 +120,9 @@ export class TgService {
             this.tgProvider.bot.command('help', this.onHelpCommand.bind(this));
 
             if (!this.isProduction) {
-                this.tgProvider.bot.command('refund', this.handleRefund.bind(this));
+                this.tgProvider.bot.command('refund', async (ctx: CommandContext<ConversationFlavor<Context>>) => {
+                    await ctx.conversation.enter('refund-conversation');
+                });
                 this.tgProvider.bot.command('context', this.handleCtx.bind(this));
             }
 

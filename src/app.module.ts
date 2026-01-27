@@ -16,6 +16,7 @@ import { PaymentModule } from './modules/payment/payment.module';
 import { ProductModule } from './modules/product/product.module';
 import { StoreModule } from './modules/store/store.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
     imports: [
@@ -37,7 +38,8 @@ import { GatewayModule } from './modules/gateway/gateway.module';
         PaymentModule,
         ProductModule,
         StoreModule,
-        GatewayModule
+        GatewayModule,
+        TasksModule
     ],
     controllers: [AppController],
     providers: [

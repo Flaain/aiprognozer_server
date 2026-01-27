@@ -50,6 +50,12 @@ export class User implements IUser {
 
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Referrals' })
     invitedBy?: mongoose.Types.ObjectId;
+
+    @Prop({ type: Number, required: true, default: 0 })
+    total_tasks_earned: number;
+
+    @Prop({ type: Number, required: true, default: 0 })
+    total_requests: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

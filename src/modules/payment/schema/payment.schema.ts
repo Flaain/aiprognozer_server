@@ -26,7 +26,7 @@ export class Payment {
     @Prop({ type: String })
     invoicePayload?: string;
 
-    @Prop({ type: String })
+    @Prop({ type: String, index: { unique: true, partialFilterExpression: { telegramPaymentChargeId: { $type: 'String' } } } })
     telegramPaymentChargeId?: string;
 
     @Prop({ type: Date })
@@ -34,6 +34,11 @@ export class Payment {
 
     @Prop({ type: Date })
     refundedAt?: Date;
+
+    @Prop({ type: Date, expires: 0 })
+    expireAt?: Date;
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
+
+PaymentSchema.index({ userId: 1, productId: 1 }, { unique: true, partialFilterExpression: { status: PAYMENT_STATUS.PENDING } });

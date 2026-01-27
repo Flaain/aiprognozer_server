@@ -16,15 +16,21 @@ export class LimitGuard implements CanActivate {
                     {
                         message: 'Limit exceeded',
                         errorCode: 'REQUEST_LIMIT_EXCEEDED',
-                        first_request_at: user.first_request_at,
+                        data: {
+                            first_request_at: user.first_request_at,
+                            nextRequestsAvailable: Math.round((+new Date(user.first_request_at) + ms('24h') - Date.now()) / 1000),
+                        },
                     },
                     HttpStatus.TOO_MANY_REQUESTS,
                 );
             } else {
                 user.request_count += 1;
+                user.total_requests += 1;
             }
         } else {
             user.request_count = 1;
+            user.total_requests += 1;
+            
             user.first_request_at = new Date();
         }
 
