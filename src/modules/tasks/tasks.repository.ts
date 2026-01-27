@@ -1,16 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { TasksAds } from './schema/task.ads.schema';
-import { ClientSession, Model, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
+import { ClientSession, Model, ProjectionType, QueryOptions, RootFilterQuery, Types, UpdateQuery } from 'mongoose';
 import { TasksReferrals } from './schema/task.referrals.schema';
 import { TasksSocials } from './schema/task.socials.schema';
 import { TasksRequests } from './schema/task.requests.schema';
 import { TasksClaims } from './schema/task.claims.schema';
-import { ITasksAds, ITasksReferrals, ITasksSocials, TaskBase } from './types';
+import { ITasksAds, ITasksReferrals, ITasksSocials, TaskBase, TasksClaimsDocument } from './types';
 import { getBaseTasksPipelineFactory } from './utils/getBaseTasksPipelineFactory';
 import { getThresholdBasePipelineFactory } from './utils/getThresholdBasePipelineFactory';
 import { TasksDaily } from './schema/task.daily.schema';
-import { ms } from 'src/shared/utils/ms';
 
 @Injectable()
 export class TasksRepository {
@@ -68,7 +67,16 @@ export class TasksRepository {
                         {
                             $match: {
                                 $expr: {
-                                    $and: [{ $eq: ['$taskId', '$$taskId'] }, { $eq: ['$userId', userId] }],
+                                    $and: [
+                                        { $eq: ['$taskId', '$$taskId'] },
+                                        { $eq: ['$userId', userId] },
+                                        {
+                                            $gt: [
+                                                { $dateAdd: { startDate: '$createdAt', unit: 'hour', amount: 24 } },
+                                                '$$NOW',
+                                            ],
+                                        },
+                                    ],
                                 },
                             },
                         },
@@ -77,19 +85,57 @@ export class TasksRepository {
                     ],
                 },
             },
-            { $unwind: { path: '$claim', preserveNullAndEmptyArrays: true } },
             {
                 $addFields: {
                     canClaim: {
                         $cond: {
-                            if: {
-                                $or: [
-                                    { $eq: ['$claim', null] },
-                                    { $lt: [{ $add: ['$claim.createdAt', ms('24h')] }, '$$NOW'] },
-                                ],
-                            },
+                            if: { $eq: [{ $size: '$claim' }, 0] },
                             then: true,
                             else: false,
+                        },
+                    },
+                    claimedAt: {
+                        $cond: {
+                            if: { $eq: [{ $size: '$claim' }, 1] },
+                            then: { $getField: { field: 'createdAt', input: { $first: '$claim' } } },
+                            else: '$$REMOVE',
+                        },
+                    },
+                    nextClaimAvailableAt: {
+                        $cond: {
+                            if: { $eq: [{ $size: '$claim' }, 1] },
+                            then: {
+                                $round: {
+                                    $divide: [
+                                        {
+                                            $subtract: [
+                                                {
+                                                    $convert: {
+                                                        input: {
+                                                            $dateAdd: {
+                                                                startDate: {
+                                                                    $getField: {
+                                                                        field: 'createdAt',
+                                                                        input: { $first: '$claim' },
+                                                                    },
+                                                                },
+                                                                unit: 'hour',
+                                                                amount: 24,
+                                                            },
+                                                        },
+                                                        to: 'long',
+                                                        onError: null,
+                                                        onNull: null,
+                                                    },
+                                                },
+                                                { $toLong: '$$NOW' },
+                                            ],
+                                        },
+                                        1000,
+                                    ],
+                                },
+                            },
+                            else: '$$REMOVE',
                         },
                     },
                 },
@@ -111,11 +157,17 @@ export class TasksRepository {
 
     public findDailyTaskById = (taskId: Types.ObjectId | string) => this.tasksDailyModel.findById(taskId);
 
-    public claimTask = (task: TasksClaims, session: ClientSession) => this.tasksClaimsModel.create([task], { session });
+    public claimTask = (task: TasksClaims, session: ClientSession): Promise<Array<TasksClaimsDocument>> => this.tasksClaimsModel.create([task], { session });
 
     public findOneAndUpdateClaim = <T>(
         filter: RootFilterQuery<TasksClaims>,
         update: UpdateQuery<TasksClaims>,
         options: QueryOptions<TasksClaims>,
     ) => this.tasksClaimsModel.findOneAndUpdate<T>(filter, update, options);
+
+    public findOneClaim = (
+        filter: RootFilterQuery<TasksClaims>,
+        projection?: ProjectionType<TasksClaims>,
+        options?: QueryOptions<TasksClaims>,
+    ) => this.tasksClaimsModel.findOne<TasksClaimsDocument>(filter, projection, options);
 }
