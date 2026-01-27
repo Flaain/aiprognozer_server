@@ -18,7 +18,7 @@ export type TasksClaimsDocument = HydratedDocument<TasksClaims> & SchemaTimestam
 
 export interface TaskBase {
     title: string;
-    description: string;
+    description?: string;
     reward: number;
 }
 
