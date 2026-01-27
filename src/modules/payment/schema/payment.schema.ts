@@ -34,6 +34,9 @@ export class Payment {
 
     @Prop({ type: Date })
     refundedAt?: Date;
+
+    @Prop({ type: Date, expires: 0 })
+    expireAt?: Date;
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
