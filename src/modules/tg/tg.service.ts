@@ -1,36 +1,68 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CommandContext, Context, BotError, InlineKeyboard, GrammyError, HttpError } from 'grammy';
 import { cmd } from './constants';
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
 import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
-import { TgProvider } from './types';
 import { join } from 'node:path';
 import { UserService } from '../user/user.service';
-import { DashboardService } from '../dashboard/dashboard.service';
 import { escapeMD } from 'src/shared/utils/escapeMD';
+import { limit } from '@grammyjs/ratelimiter';
+import { TgBot } from './types';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 @Injectable()
-export class TgService {
+export class TgService implements OnModuleInit {
     private readonly logger = new Logger(TgService.name);
     private readonly isProduction: boolean;
 
     constructor(
-        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot,
         private readonly configService: ConfigService,
         private readonly userService: UserService,
-        private readonly dashboardService: DashboardService
+        private readonly dashboardService: DashboardService,
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
-
-        this.init();
     }
 
-    private onStart = async (ctx: CommandContext<Context>) => {
+    public onModuleInit = async () => {
+        try {
+            this.tgBot.catch(this.handleCatch);
+
+            await this.tgBot.api.setMyCommands(cmd);
+            
+            this.tgBot.use(limit({ limit: 1, timeFrame: 50 }));
+            
+            this.tgBot.use(conversations());
+
+            !this.isProduction && this.tgBot.use(createConversation(this.handleRefund, 'refund-conversation'));
+            
+            this.tgBot.use(this.dashboardService.registerDashboardLinkConversation());
+
+            this.tgBot.command('link', this.getLink);
+            this.tgBot.command('start', this.onStart);
+            this.tgBot.command('help', this.onHelpCommand);
+
+            if (!this.isProduction) {
+                this.tgBot.command('refund', async (ctx) => { await ctx.conversation.enter('refund-conversation'); });
+                this.tgBot.command('context', this.handleCtx);
+            }
+
+            this.tgBot.start({
+                onStart: (me) => {
+                    this.logger.log(`🚀 bot successfully started. Here is a bot info:\n${JSON.stringify(me, null, 4)}`);
+                },
+            });
+        } catch (error) {
+            this.logger.error(error);
+        }
+    };
+
+    private onStart = async (ctx: CommandContext<ConversationFlavor<Context>>) => {
         try {
             if (!ctx.from) return;
-    
+
             const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
             
             await this.userService.findOrCreateUserByTelegramId(ctx.from, 'bot');
@@ -83,7 +115,7 @@ export class TgService {
         }
     }
 
-    private handleCtx = (ctx: CommandContext<Context>) => {
+    private handleCtx = (ctx: CommandContext<ConversationFlavor<Context>>) => {
         ctx.reply(
             `<pre><code class="language-json">${JSON.stringify(ctx.chat, null, 2)}</code></pre>`,
             {
@@ -92,45 +124,7 @@ export class TgService {
         );
     }
 
-    private onHelpCommand = (ctx: CommandContext<Context>) => {
+    private onHelpCommand = (ctx: CommandContext<ConversationFlavor<Context>>) => {
         ctx.reply('Если у вас возникли вопросы, замечания или требуется техническая поддержка — обращайтесь по любым вопросам к @aiprognozer_support');
-    };
-
-    private init = async () => {
-        try {
-            this.tgProvider.bot.catch(this.handleCatch.bind(this));
-
-            await this.tgProvider.bot.api.setMyCommands(cmd);
-            
-            // this.tgProvider.bot.use(limit({ limit: 1, timeFrame: 500 }));
-            
-            this.tgProvider.bot.use(conversations());
-
-            !this.isProduction && this.tgProvider.bot.use(createConversation(this.handleRefund, 'refund-conversation'));
-            
-            this.tgProvider.bot.use(
-                createConversation(this.dashboardService.onDashboardLinkConversation.bind(this.dashboardService), {
-                    id: 'dashboard/link',
-                    maxMillisecondsToWait: 60 * 1000 * 5,
-                }),
-            );
-
-            this.tgProvider.bot.command('link', this.getLink.bind(this));
-            this.tgProvider.bot.command('start', this.onStart.bind(this));
-            this.tgProvider.bot.command('help', this.onHelpCommand.bind(this));
-
-            if (!this.isProduction) {
-                this.tgProvider.bot.command('refund', async (ctx: CommandContext<ConversationFlavor<Context>>) => {
-                    await ctx.conversation.enter('refund-conversation');
-                });
-                this.tgProvider.bot.command('context', this.handleCtx.bind(this));
-            }
-
-            this.tgProvider.bot.start({ onStart: (botInfo) => this.tgProvider.notify(botInfo) });
-            
-            this.logger.log('🚀 bot is running');
-        } catch (error) {
-            this.logger.error(error);
-        }
     };
 }
