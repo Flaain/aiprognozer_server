@@ -7,17 +7,17 @@ import { TasksClaimsDocument, TasksCollectionType, TasksDailyDocument, TaskType 
 import { AppException } from 'src/shared/exceptions/app.exception';
 import { TASK_TYPE } from './constants';
 import { PROVIDERS } from 'src/shared/constants';
-import { TgProvider } from '../tg/types';
 import { InjectConnection } from '@nestjs/mongoose';
 import { MongoServerError } from 'mongodb';
 import { ms } from 'src/shared/utils/ms';
+import { TgBot } from '../tg/types';
 
 @Injectable()
 export class TasksService {
     private readonly logger = new Logger(TasksService.name);
 
     constructor(
-        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot,
         @InjectConnection() private readonly connection: Connection,
         private readonly tasksRepository: TasksRepository,
         private readonly referralsService: ReferralsService,
@@ -63,7 +63,7 @@ export class TasksService {
 
     private verifyTelegramFollow = async (telegramChatId: number, userTelegramId: number) => {
         try {
-            await this.tgProvider.bot.api.getChatMember(telegramChatId, userTelegramId);
+            await this.tgBot.api.getChatMember(telegramChatId, userTelegramId);
         } catch (error) {
             this.logger.error(error);
             
