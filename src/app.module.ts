@@ -28,7 +28,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
             inject: [ConfigService],
         }),
         TgModule.forRootAsync({
-            useFactory: (conifgSerivce: ConfigService) => ({ token: conifgSerivce.getOrThrow<string>('BOT_TOKEN') }),
+            useFactory: (configService: ConfigService) => ({ token: configService.getOrThrow<string>('BOT_TOKEN') }),
             inject: [ConfigService],
         }),
         UserModule,
@@ -41,6 +41,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
         GatewayModule,
         TasksModule
     ],
+    
     controllers: [AppController],
     providers: [
         { provide: APP_GUARD, useClass: ThrottlerGuard },
