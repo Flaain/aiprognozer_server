@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { UserDocument } from '../user/types/types';
 import { PaymentService } from '../payment/payment.service';
 import { ProductService } from '../product/product.service';
@@ -8,7 +8,6 @@ import { ProductDocument } from '../product/types';
 import { PAYMENT_STATUS } from '../payment/constants';
 import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
 import { ms } from 'src/shared/utils/ms';
-import { TgProvider } from '../tg/types';
 import { GatewayService } from '../gateway/gateway.service';
 import { Context } from 'grammy';
 import { InvoicePayload } from '../payment/types';
@@ -19,9 +18,10 @@ import { Product } from '../product/schema/product.schema';
 import { ConfigService } from '@nestjs/config';
 import { SOCKET_EVENTS } from '../gateway/constants';
 import { Payment } from '../payment/schema/payment.schema';
+import { TgBot } from '../tg/types';
 
 @Injectable()
-export class StoreService {
+export class StoreService implements OnApplicationBootstrap {
     private readonly logger = new Logger(StoreService.name);
     private readonly isProduction: boolean;
 
@@ -31,10 +31,16 @@ export class StoreService {
         private readonly gatewayService: GatewayService,
         private readonly userService: UserService,
         private readonly configService: ConfigService,
-        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot,
         @InjectConnection() private readonly connection: Connection,
     ) {
         this.isProduction = configService.getOrThrow<string>('NODE_ENV') === 'production';
+    }
+
+    public onApplicationBootstrap = () => {
+        this.tgBot.on('pre_checkout_query', this.handlePreCheckoutQuery);
+        this.tgBot.on('message:successful_payment', this.handleSuccessfulPayment);
+        this.tgBot.on('message:refunded_payment', this.handleRefundedPayment);
     }
 
     public getStore = async (user: UserDocument) => {
@@ -62,7 +68,7 @@ export class StoreService {
     }
 
     private createInvoice = async (user: UserDocument, product: ProductDocument, paymentId: string) => {
-        const invoice = await this.tgProvider.bot.api.createInvoiceLink(
+        const invoice = await this.tgBot.api.createInvoiceLink(
             product.name,
             product.description,
             JSON.stringify({
@@ -230,7 +236,7 @@ export class StoreService {
                 socket.emit(SOCKET_EVENTS.PRODUCT_BUY, restProduct.effect);
             });
 
-            this.tgProvider.bot.api
+            this.tgBot.api
                 .sendMessage(
                     ctx.chat.id,
                     `<b>Благодарим за покупку!</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы получили ваш платеж за <b>"${product.name}"</b>. Спасибо за доверие!\n\n<b>Детали заказа:</b>\n\nID — <code>${ctx.message.successful_payment.telegram_payment_charge_id}</code>\nСумма — ⭐️${ctx.message.successful_payment.total_amount}\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#чек`,
@@ -274,7 +280,7 @@ export class StoreService {
 
             await this.userService.removeProductEffect(user, product.effect, refundedAt, session);
 
-            this.tgProvider.bot.api
+            this.tgBot.api
                 .sendMessage(
                     ctx.chat.id,
                     `<b>Уведомление о возврате средств</b>\n\nЗдравствуйте, ${ctx.chat.first_name}, мы зафиксировали возврат платежа за <b>"${product.name}"</b>.\n\n<b>Детали операции:</b>\n\nID платежа — <code>${ctx.message.refunded_payment.telegram_payment_charge_id}</code>\nСумма возврата — ⭐️${ctx.message.refunded_payment.total_amount}\n\nВ связи с возвратом все эффекты приобретённого продукта были отключены и удалены из вашего аккаунта.\n\n<tg-spoiler><i>Если вам нужна помощь или у вас возникли вопросы, пожалуйста, напишите в службу поддержки или воспользуйтесь командой /help.</i></tg-spoiler>\n\nС уважением,\nКоманда AI PROGNOZER\n\n#возврат`,
