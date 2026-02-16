@@ -1,6 +1,8 @@
+import { ConversationFlavor } from '@grammyjs/conversations';
 import { ModuleMetadata } from '@nestjs/common';
 import { Bot, BotConfig, Context } from 'grammy';
-import { UserFromGetMe } from 'grammy/types';
+
+export type TgBot = Bot<ConversationFlavor<Context>>;
 
 export interface TgModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
     useFactory: (...args: Array<any>) => Promise<TgModuleOptions> | TgModuleOptions;
@@ -9,12 +11,5 @@ export interface TgModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
 
 export interface TgModuleOptions {
     token: string;
-    config?: BotConfig<Context>;
-}
-
-export interface TgProvider {
-    bot: Bot;
-    subscribers: Set<(botInfo: UserFromGetMe) => void>;
-    subscribe: (subscriber: (botInfo: UserFromGetMe) => void) => () => void;
-    notify: (botInfo: UserFromGetMe) => void;
+    config?: BotConfig<ConversationFlavor<Context>>;
 }
