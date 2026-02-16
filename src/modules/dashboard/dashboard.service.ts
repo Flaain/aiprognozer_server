@@ -1,46 +1,61 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { CallbackQueryContext, CommandContext, Context, InlineKeyboard, NextFunction } from 'grammy';
 import { UserRepository } from '../user/user.repository';
 import { USER_ROLES } from '../user/constants';
-import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
+import { Conversation, ConversationFlavor, createConversation } from '@grammyjs/conversations';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { URL } from 'node:url';
 import { ms } from 'src/shared/utils/ms';
+import { PROVIDERS } from 'src/shared/constants';
+import { TgBot } from '../tg/types';
 
 @Injectable()
-export class DashboardService {
+export class DashboardService implements OnApplicationBootstrap {
     private readonly logger = new Logger(DashboardService.name);
-    private readonly welcomeReplyMarkup = new InlineKeyboard().text('Заменить ссылку', 'dashboard/link').row().text('Скрыть панель', 'dashboard/hide');
+    private readonly dashboardMarkup = new InlineKeyboard()
+        .text('Заменить ссылку', 'dashboard/link')
+        .row()
+        .text('Скрыть панель', 'dashboard/hide');
 
-    constructor(private readonly userRepository: UserRepository) {}
+    constructor(
+        private readonly userRepository: UserRepository,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot,
+    ) {}
 
-    public async onDashboard(ctx: CommandContext<Context>) {
+    public onApplicationBootstrap = () => {
+        this.tgBot.command('dashboard', this.hasAccess, this.onDashboard);
+
+        this.tgBot.callbackQuery('dashboard', this.hasAccess, this.buildWelcomeScreen);
+        this.tgBot.callbackQuery('dashboard/hide', this.hasAccess, this.onDashboardHide);
+        this.tgBot.callbackQuery('dashboard/link', this.hasAccess, this.onDashboardLink);
+    };
+
+    public registerDashboardLinkConversation = () => createConversation(this.onDashboardLinkConversation, { id: 'dashboard/link', maxMillisecondsToWait: ms('5m') });
+
+    private onDashboard = async (ctx: CommandContext<ConversationFlavor<Context>>) => {
         ctx.reply(`*Добро пожаловать в админ-панель*`, {
             parse_mode: 'Markdown',
-            reply_markup: this.welcomeReplyMarkup,
+            reply_markup: this.dashboardMarkup,
         });
-    }
+    };
 
-    public buildWelcomeScreen = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
-        await ctx.conversation.exit('dashboard/link');
-
+    private buildWelcomeScreen = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
         ctx.api.editMessageText(ctx.chatId, ctx.callbackQuery.message.message_id, `*Добро пожаловать в админ-панель*`, {
             parse_mode: 'Markdown',
-            reply_markup: this.welcomeReplyMarkup,
+            reply_markup: this.dashboardMarkup,
         });
 
         ctx.answerCallbackQuery();
     };
 
-    public onDashboardLink = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
-        await ctx.conversation.exit('dashboard/link');
+    private onDashboardLink = async (ctx: CallbackQueryContext<ConversationFlavor<Context>>) => {
         await ctx.conversation.enter('dashboard/link');
 
         ctx.answerCallbackQuery();
     };
 
-    public onDashboardLinkConversation = async (
+    private onDashboardLinkConversation = async (
         conversation: Conversation,
         ctx: CallbackQueryContext<ConversationFlavor<Context>>,
     ) => {
@@ -50,20 +65,18 @@ export class DashboardService {
             isSuccess: false,
         };
 
-        ctx.api.editMessageText(
-            ctx.chatId,
-            ctx.callbackQuery.message.message_id,
-            '*Отправьте новую ссылку*',
-            { parse_mode: 'Markdown' },
-        );
+        await ctx.api.editMessageText(ctx.chatId, ctx.callbackQuery.message.message_id, '*Отправьте новую ссылку*', {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[{ text: 'Отменить', callback_data: 'dashboard' }]],
+            },
+        });
 
         do {
-            const { message } = await conversation.waitUntil((ctx) => ctx.has('message:text') && !ctx.has('::bot_command') && !ctx.has('callback_query'),
-                {
-                    maxMilliseconds: ms('5m'),
-                    otherwise: () => conversation.halt({ next: true })
-                },
-            )
+            const { message } = await conversation.waitUntil(
+                (ctx) => ctx.has('message:text') && !ctx.has('::bot_command') && !ctx.has('callback_query'),
+                { maxMilliseconds: ms('5m'), otherwise: () => conversation.halt({ next: true }) },
+            );
 
             if (this.validateLink(message.text)) {
                 internal_ctx.link = message.text;
@@ -101,9 +114,9 @@ export class DashboardService {
             const url = new URL(trimmted);
 
             if (!/^https?:/.test(url.protocol) || !url.hostname.startsWith('1')) return false;
-    
+
             const allowedQueryParams = ['p', 'open'];
-    
+
             for (const [key] of Array.from(url.searchParams.entries())) {
                 if (!allowedQueryParams.includes(key)) return false;
             }
@@ -114,15 +127,18 @@ export class DashboardService {
 
             return false;
         }
-    }
+    };
 
-    public async onDashboardHide(ctx: CallbackQueryContext<Context>) {
+    private async onDashboardHide(ctx: CallbackQueryContext<ConversationFlavor<Context>>) {
         await ctx.api.deleteMessage(ctx.chatId, ctx.callbackQuery.message.message_id);
 
         ctx.answerCallbackQuery('Панель скрыта');
     }
 
-    public hasAccess = async (ctx: CommandContext<Context> | CallbackQueryContext<Context>, next: NextFunction) => {
+    private hasAccess = async (
+        ctx: CommandContext<ConversationFlavor<Context>> | CallbackQueryContext<ConversationFlavor<Context>>,
+        next: NextFunction,
+    ) => {
         if (
             ctx.chat.type !== 'private' ||
             !(await this.userRepository.userExists({
