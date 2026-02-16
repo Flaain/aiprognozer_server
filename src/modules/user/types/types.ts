@@ -2,6 +2,10 @@ import { HydratedDocument, Types } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { USER_ROLES } from '../constants';
 
+export type UserDocument = HydratedDocument<User>;
+export type UserRoles = (typeof USER_ROLES)[keyof typeof USER_ROLES];
+export type PostbackType = 'PROMO' | 'LINK';
+
 export interface IUser {
     telegram_id: number;
     first_request_at?: Date;
@@ -18,7 +22,7 @@ export interface IUser {
 
 export interface ToObjectUser extends Omit<IUser, 'onewin'> {
     _id: Types.ObjectId;
-    onewin: { onewin_id: number }
+    onewin: { onewin_id: number };
 }
 
 export interface WebAppUser {
@@ -34,6 +38,9 @@ export interface WebAppUser {
     photo_url?: string;
 }
 
-export type UserDocument = HydratedDocument<User>;
-export type UserRoles = typeof USER_ROLES[keyof typeof USER_ROLES];
-export type PostbackType = 'PROMO' | 'LINK'
+export interface PostbackParams {
+    onewin_id: number;
+    country: string;
+    type: PostbackType;
+    name: string;
+}

@@ -6,7 +6,6 @@ import { InjectConnection } from '@nestjs/mongoose';
 import { defaultResponse, PROVIDERS } from 'src/shared/constants';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from 'src/shared/exceptions/app.exception';
-import { TgProvider } from '../tg/types';
 import { User } from './schemas/user.schema';
 import { ProductEffect } from '../product/types';
 import { ms } from 'src/shared/utils/ms';
@@ -14,6 +13,7 @@ import { escapeMD } from 'src/shared/utils/escapeMD';
 import { ReferralsService } from '../referrals/referrals.service';
 import { DEFAULT_REQUEST_LIMIT_REFERRAL_REWARD, PREMIUM_REQUEST_LIMIT_REFERRAL_REWARD } from '../referrals/constants';
 import { REFERRALS_BATCH } from './constants';
+import { TgBot } from '../tg/types';
 
 @Injectable()
 export class UserService {
@@ -22,7 +22,7 @@ export class UserService {
 
     constructor(
         @InjectConnection() private readonly connection: Connection,
-        @Inject(PROVIDERS.TG_PROVIDER) private readonly tgProvider: TgProvider,
+        @Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot,
         private readonly configService: ConfigService,
         private readonly userRepository: UserRepository,
         private readonly referralsService: ReferralsService,
@@ -84,11 +84,15 @@ export class UserService {
 
         await this.userRepository.createOneWinReferral(onewin_id);
 
-        this.tgProvider.bot.api.sendMessage(
-            this.configService.getOrThrow<number>('NEW_LEED_GROUP_ID'),
-            `*📣 Новая регистрация!*\n\n🆔 ID: ${onewin_id}\n🌍 Страна: ${country}\n${type === 'PROMO' ? '🎟️ Промокод' : '🔗 Ссылка'}: ${name}`,
-            { parse_mode: 'Markdown' },
-        );
+        this.tgBot.api
+            .sendMessage(
+                this.configService.getOrThrow<number>('NEW_LEED_GROUP_ID'),
+                `*📣 Новая регистрация!*\n\n🆔 ID: ${onewin_id}\n🌍 Страна: ${country}\n${type === 'PROMO' ? '🎟️ Промокод' : '🔗 Ссылка'}: ${name}`,
+                { parse_mode: 'Markdown' },
+            )
+            .catch((error) => {
+                this.logger.error(`Failed to notify about new leed: ${error}`);
+            });
 
         return defaultResponse;
     };
@@ -178,10 +182,7 @@ export class UserService {
         user = await this.userRepository.findOneAndUpdateUser(
             { telegram_id: webAppUser.id }, 
             userFields, 
-            { 
-                projection: { onewin: 0, invitedBy: 0, telegram_id: 0, total_requests: 0, total_tasks_earned: 0 }, 
-                new: true 
-            }
+            { projection: { onewin: 0, invitedBy: 0, telegram_id: 0, total_requests: 0, total_tasks_earned: 0 }, new: true }
         );
 
         if (!user) {
@@ -196,6 +197,10 @@ export class UserService {
                         { $inc: { total_count: 1 } }, 
                         { session }
                     );
+
+                    if (!invitedByRef) {
+                        this.logger.warn(`While creating user ${webAppUser.id} inviter document with code ${ref} was not found`);
+                    };
 
                     user = (
                         await this.userRepository.createUser(
@@ -216,11 +221,15 @@ export class UserService {
                 user = await this.userRepository.createUser({ ...userFields, telegram_id: webAppUser.id });
             }
 
-            this.tgProvider.bot.api.sendMessage(
-                this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
-                `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${webAppUser.username ? escapeMD(webAppUser.username) : 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
-                { parse_mode: 'Markdown', disable_notification: !this.isProduction },
-            );
+            this.tgBot.api
+                .sendMessage(
+                    this.configService.getOrThrow<string>('NEW_USERS_GROUP_ID'),
+                    `*🚀 Новый пользователь!*\n\n👤 Имя: ${escapeMD(webAppUser.first_name)}\n📧 Username: @${webAppUser.username ? escapeMD(webAppUser.username) : 'без юзернейма'}\n🆔 ID: ${webAppUser.id}`,
+                    { parse_mode: 'Markdown', disable_notification: !this.isProduction },
+                )
+                .catch((error) => {
+                    this.logger.error(`Failed to notify about new user: ${error}`);
+                });
         }
 
         if (user.first_request_at && Date.now() > +new Date(user.first_request_at) + ms('24h')) {
@@ -295,7 +304,7 @@ export class UserService {
 
         if (!ref) throw new NotFoundException('Referral code not found');
 
-        const preparedMessage = await this.tgProvider.bot.api.savePreparedInlineMessage(
+        const preparedMessage = await this.tgBot.api.savePreparedInlineMessage(
             telegram_id,
             {
                 type: 'photo',
