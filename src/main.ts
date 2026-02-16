@@ -3,52 +3,60 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { CORS, PROVIDERS } from './shared/constants';
-import { TgProvider } from './modules/tg/types';
+import { Bot } from 'grammy';
+import { Logger } from '@nestjs/common';
 
 (async () => {
+    const logger = new Logger('Bootstrap');
+
     try {
         const PORT = process.env.PORT ?? 3000;
+        const PREFIX = process.env.GLOBAL_PREFIX ?? null;
 
         const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: CORS });
+        
 
         app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false }));
-        
+
         app.enableShutdownHooks();
-        
-        app.setGlobalPrefix('api');
+
+        PREFIX && app.setGlobalPrefix(PREFIX);
 
         const gracefulShutdown = async (signal: Extract<NodeJS.Signals, 'SIGTERM' | 'SIGINT'>) => {
             try {
-                console.log(`🛑 Received ${signal}, starting graceful shutdown...`);
+                logger.log(`🛑 Received ${signal}, starting graceful shutdown...`);
 
-                await app.get<TgProvider>(PROVIDERS.TG_PROVIDER).bot.stop();
+                await app.get<Bot>(PROVIDERS.TG_BOT).stop();
                 await app.close();
-                
-                console.log('✅ Application closed gracefully');
+
+                logger.log('✅ Application closed gracefully');
 
                 process.exit(0);
             } catch (error) {
-                console.error('❌ Error during graceful shutdown', error);
+                logger.error('❌ Error during graceful shutdown', error);
 
                 process.exit(1);
             }
         };
 
-        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+        process.on('SIGTERM', gracefulShutdown);
+        process.on('SIGINT', gracefulShutdown);
 
         process.on('uncaughtException', (err) => {
-            console.error('💥 Uncaught Exception', err);
+            logger.error('💥 Uncaught Exception', err);
             process.exit(1);
         });
 
         process.on('unhandledRejection', (reason, promise) => {
-            console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+            logger.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
             process.exit(1);
         });
 
-        await app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+        await app.listen(PORT);
+
+        logger.debug(`Server successfully started at ${PORT} port`);
+        logger.debug(`You can access server at - http://localhost:${PORT}${PREFIX ? `/${PREFIX}` : ''}`);
     } catch (error) {
-        console.log(error);
+        logger.log(error);
     }
 })();
