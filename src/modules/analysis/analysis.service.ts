@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { UserDocument } from '../user/types/types';
 import { readFile } from 'node:fs/promises';
 import { SportType } from './types';
@@ -10,31 +10,43 @@ import {
     PREDICTION_SIZE,
 } from './constants';
 import { MESSAGE_EFFECT_ID, PROVIDERS } from 'src/shared/constants';
-import { join } from 'node:path';
 import { ms } from 'src/shared/utils/ms';
 import { TgBot } from '../tg/types';
 
 @Injectable()
-export class AnalysisService {
+export class AnalysisService implements OnModuleInit {
     private readonly logger = new Logger(AnalysisService.name);
+    private _variants = null;
 
     constructor(@Inject(PROVIDERS.TG_BOT) private readonly tgBot: TgBot) {}
 
-    analysis = async (user: UserDocument, type: SportType, _: Express.Multer.File) => {
-        const variants = JSON.parse(await readFile(join(__dirname, '..', '..', 'variants.json'), 'utf-8'));
+    get variants() {
+        return this._variants;
+    }
 
+    async onModuleInit() {
+        try {
+            this._variants = JSON.parse(await readFile('variants.json', 'utf-8'));
+        } catch (error) {
+            this.logger.error(error);
+
+            throw new Error(`OnModuleInitError: Error appears while reading variants.json in ${AnalysisService.name}`);
+        }
+    }
+
+    analysis = async (user: UserDocument, type: SportType, _: Express.Multer.File) => {
         const indexes = new Set<number>();
         const alternativeProbability = new Set<number>();
         
         while (indexes.size < PREDICTION_SIZE || alternativeProbability.size < PREDICTION_SIZE - 1) {
-            indexes.size < PREDICTION_SIZE && indexes.add(Math.floor(Math.random() * variants[type].markets.length));
+            indexes.size < PREDICTION_SIZE && indexes.add(Math.floor(Math.random() * this.variants[type].markets.length));
             alternativeProbability.size < PREDICTION_SIZE - 1 && alternativeProbability.add(Math.floor(Math.random() * (MAX_ALTERNATIVE_PROBABILITY_PERCENT - MIN_ALTERNATIVE_PROBABILITY_PERCENT + 1)) + MIN_ALTERNATIVE_PROBABILITY_PERCENT);
         };
 
         const alternativesArr = Array.from(alternativeProbability);
 
         const [prediction, ...alternatives] = Array.from(indexes).map((market_index, index) => {
-            const { name, abbr, descriptions } = variants[type].markets[market_index];
+            const { name, abbr, descriptions } = this.variants[type].markets[market_index];
 
             if (!index) {
                 return {
