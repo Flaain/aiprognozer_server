@@ -4,7 +4,6 @@ import { UserRepository } from '../user/user.repository';
 import { USER_ROLES } from '../user/constants';
 import { Conversation, ConversationFlavor, createConversation } from '@grammyjs/conversations';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { URL } from 'node:url';
 import { ms } from 'src/shared/utils/ms';
 import { PROVIDERS } from 'src/shared/constants';
@@ -88,7 +87,7 @@ export class DashboardService implements OnApplicationBootstrap {
 
         for (let i = 0; i < 3; i += 1) {
             try {
-                await writeFile(join(__dirname, '..', '..', 'link.txt'), internal_ctx.link);
+                await writeFile('link.txt', internal_ctx.link);
 
                 internal_ctx.isSuccess = true;
 

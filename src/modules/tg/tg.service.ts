@@ -5,7 +5,6 @@ import { cmd } from './constants';
 import { PROVIDERS } from 'src/shared/constants';
 import { readFile } from 'node:fs/promises';
 import { Conversation, ConversationFlavor, conversations, createConversation } from '@grammyjs/conversations';
-import { join } from 'node:path';
 import { UserService } from '../user/user.service';
 import { escapeMD } from 'src/shared/utils/escapeMD';
 import { limit } from '@grammyjs/ratelimiter';
@@ -63,7 +62,7 @@ export class TgService implements OnModuleInit {
         try {
             if (!ctx.from) return;
 
-            const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
+            const link = await readFile('link.txt', 'utf-8');
             
             await this.userService.findOrCreateUserByTelegramId(ctx.from, 'bot');
     
@@ -92,7 +91,7 @@ export class TgService implements OnModuleInit {
     };
 
     private getLink = async (ctx: CommandContext<ConversationFlavor<Context>>) => {
-        const link = await readFile(join(__dirname, '..', '..', 'link.txt'), 'utf-8');
+        const link = await readFile('link.txt', 'utf-8');
 
         ctx.reply(`Актуальная ссылка для регистрации - ${link.toString()}`);
     };
