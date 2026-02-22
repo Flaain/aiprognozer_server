@@ -12,6 +12,4 @@ export interface Analysis {
     alternative: Array<Omit<Prediction, 'description'>>;
 }
 
-export interface Variants {
-    
-}
+export interface Variants {};
